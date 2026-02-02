@@ -75,7 +75,8 @@
 
 1. ไปที่โฟลเดอร์ installer  
 2. Run `setup.bat` ด้วยสิทธิ์ Admin  
-3. โปรแกรมจะทำงานแบบ Background  
+3. โปรแกรมจะทำงานแบบ Background
+4. สามารถลบโฟลเดอร์ C:\Smart Card Bridge เพื่อลบโปรแกรม
 
 API ที่ให้บริการ:
 
