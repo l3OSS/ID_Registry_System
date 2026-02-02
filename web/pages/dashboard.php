@@ -179,10 +179,6 @@ $nickname = $_SESSION['nickname'] ?? $_SESSION['username'] ?? 'ผู้ใช�
                     <a href="index.php?page=guest_list" class="btn btn-outline-dark w-100 py-3 mb-3 rounded-3">
                         <i class="bi bi-search"></i> ค้นหารายชื่อ
                     </a>
-                    <a href="downloads/staff_tools.zip" class="btn btn-outline-success w-100 py-3 rounded-3 mt-auto">
-                        <i class="bi bi-download"></i> เครื่องมือเจ้าหน้าที่
-                    </a>
-
 
                         <?php
 $log = null;
