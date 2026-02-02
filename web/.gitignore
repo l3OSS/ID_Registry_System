@@ -1,15 +1,24 @@
-# PHP
+# Environment
+.env
+*.env
+
+# PHP Composer
+/vendor/
+
+# PHP Sensitive
 /config/db.php
-/core/security.php
+
+
+# Install lock
 /install/install.lock
+
+# Uploads
 /uploads/*
 !/uploads/.gitkeep
 
-# Visual Studio (C#)
+# Visual Studio / C#
 .vs/
 bin/
 obj/
 *.user
 *.suo
-
-/vendor/.env
