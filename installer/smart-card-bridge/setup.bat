@@ -1,48 +1,47 @@
 @echo off
-title SmartCard Service Installer
+title SmartCard Service Linker
+pushd "%~dp0"
 color 0b
 
 echo ==============================================
-echo    CITIZEN REGISTRATION - STAFF TOOLS SETUP
+echo    SMARTCARD SERVICE - DYNAMIC LINKER
 echo ==============================================
-echo.
 
 :: 1. ตรวจสอบสิทธิ์ Admin
 net session >nul 2>&1
 if %errorLevel% neq 0 (
-    echo [!] Please run this file as Administrator! (คลิกขวาแล้วเลือก Run as Administrator)
+    echo [!] ERROR: Please run as Administrator!
     pause
     exit
 )
 
-:: 2. สร้างโฟลเดอร์ปลายทาง
-echo [+] Creating directory at C:\SmartCard...
-if not exist "C:\SmartCard" mkdir "C:\SmartCard"
+:: 2. ดึง Path ปัจจุบัน (Dynamic Path)
+set "CUR_DIR=%~dp0"
+set "SAFE_PATH=%CUR_DIR:\=\\%"
 
-:: 3. คัดลอกโปรแกรม .exe
-echo [+] Copying SmartCardService.exe...
-copy /Y "SmartCardService.exe" "C:\SmartCard\"
+echo [+] Detecting Service at: %CUR_DIR%
 
-:: 4. ลงทะเบียน Registry แบบเงียบ (Silent)
-echo [+] Registering SmartCard Protocol...
-regedit.exe /s "register_protocol.reg"
+:: 3. สร้างและลงทะเบียน Registry ทันที (ไม่ต้องมีไฟล์ .reg แยก)
+(
+echo Windows Registry Editor Version 5.00
+echo.
+echo [HKEY_CLASSES_ROOT\smartcard]
+echo @="URL:smartcard Protocol"
+echo "URL Protocol"=""
+echo.
+echo [HKEY_CLASSES_ROOT\smartcard\shell\open\command]
+echo @="\"%SAFE_PATH%Reg.exe\" \"%%1\""
+) > "temp_link.reg"
 
-:: 5. สร้าง Shortcut ไว้ที่หน้า Desktop (Optional)
-echo [+] Creating Shortcut on Desktop...
-set SCRIPT="%TEMP%\%RANDOM%-%RANDOM%-%RANDOM%-%RANDOM%.vbs"
-echo Set oWS = WScript.CreateObject("WScript.Shell") >> %SCRIPT%
-echo sLinkFile = oWS.ExpandEnvironmentStrings("%%USERPROFILE%%\Desktop\SmartCard Service.lnk") >> %SCRIPT%
-echo Set oLink = oWS.CreateShortcut(sLinkFile) >> %SCRIPT%
-echo oLink.TargetPath = "C:\SmartCard\SmartCardService.exe" >> %SCRIPT%
-echo oLink.Save >> %SCRIPT%
-cscript /nologo %SCRIPT%
-del %SCRIPT%
+regedit.exe /s "temp_link.reg"
+del "temp_link.reg"
 
 echo.
 echo ==============================================
-echo    SUCCESS: Installation Completed!
+echo    SUCCESS: Service linked successfully!
 echo ==============================================
-echo [Note] 1. Open 'SmartCard Service' on your desktop.
-echo        2. Now you can use "Read Card" on the website.
+echo You can now use "Read Card" on your website.
+echo This program is located at: %CUR_DIR%Reg.exe
 echo ==============================================
+popd
 pause
