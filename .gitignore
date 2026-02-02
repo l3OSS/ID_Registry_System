@@ -1,0 +1,15 @@
+# PHP
+/config/db.php
+/core/security.php
+/install/install.lock
+/uploads/*
+!/uploads/.gitkeep
+
+# Visual Studio (C#)
+.vs/
+bin/
+obj/
+*.user
+*.suo
+
+/vendor/.env
