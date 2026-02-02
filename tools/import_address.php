@@ -2,7 +2,7 @@
 require_once 'config/db.php'; 
 
 // ปรับ Path ให้ตรงกับไฟล์ของคุณ
-$json_path = 'raw_th_addr.json'; 
+$json_path = 'raw_database.json'; 
 
 if (!file_exists($json_path)) die("❌ ไม่พบไฟล์ JSON");
 
