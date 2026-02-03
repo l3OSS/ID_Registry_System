@@ -129,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="text-center mt-5">
         <hr class="opacity-25">
         <p class="text-muted mb-0" style="font-size: 0.75rem;">
-            &copy; <?php echo date('Y'); ?> Registration System Offline.
+            &copy; <?php echo date('Y'); ?> Offline Registration System.
         </p>
     </div>
 </div>
