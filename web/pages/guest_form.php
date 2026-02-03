@@ -14,9 +14,9 @@ checkPermission(3);
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?? 0;
 $citizen = null;
-$action = ($id > 0) ? 'update' : 'insert'; 
+$action = ($id > 0) ? 'update' : 'insert';
 $photo_show = "assets/noimg.jpg";
-$selected_v = []; 
+$selected_v = [];
 
 // 1. Fetch Master Data
 $v_master = $pdo->query("SELECT id, v_name FROM vulnerable_master ORDER BY id ASC")->fetchAll();
@@ -34,7 +34,7 @@ if ($id > 0) {
     if ($citizen) {
         $citizen['id_card'] = decryptData($citizen['id_card_enc'] ?? '');
         $citizen['phone']   = !empty($citizen['phone_enc']) ? decryptData($citizen['phone_enc']) : '';
-        
+       
         // Address Logic: Prefer Lookup Data over raw text
         $citizen['addr_tambon']   = $citizen['l_tambon']   ?? $citizen['addr_tambon']   ?? '';
         $citizen['addr_amphoe']   = $citizen['l_amphoe']   ?? $citizen['addr_amphoe']   ?? '';
@@ -124,7 +124,7 @@ if ($id > 0) {
                     </div>
                 </div>
 
-                
+               
                 <div class="p-3 mb-4 border-0 rounded bg-light shadow-sm" style="border-left: 5px solid #0d6efd !important;">
                     <label class="fw-bold text-primary mb-3"><i class="bi bi-geo-alt-fill"></i> 2. ที่อยู่ตามทะเบียนบ้าน</label>
                     <div class="row g-3">
@@ -167,7 +167,7 @@ if ($id > 0) {
                                 </div>
                             </div>
 
-                    <?php 
+                    <?php
                         $custom_master = $pdo->query("SELECT * FROM custom_field_master WHERE is_active = 1")->fetchAll();                        
                         // แยกกลุ่มข้อมูลเพื่อให้แสดงผลสวยงาม
                         $checkbox_fields = array_filter($custom_master, function($f) { return $f['field_type'] != 'text'; });
@@ -175,7 +175,7 @@ if ($id > 0) {
                     ?>
                     <?php if(!empty($checkbox_fields)): ?>
                     <div class="row pt-2">
-                        <?php foreach($checkbox_fields as $cm): 
+                        <?php foreach($checkbox_fields as $cm):
                             $val = "";
                             if ($id > 0) {
                                 $stmt_val = $pdo->prepare("SELECT field_value FROM citizen_custom_values WHERE citizen_id = ? AND field_id = ?");
@@ -184,7 +184,7 @@ if ($id > 0) {
                             }
                         ?>
                             <div class="col-md-3 col-sm-6 mb-2">
-                                <div class="form-check form-switch pt-1"> 
+                                <div class="form-check form-switch pt-1">
                                     <input class="form-check-input" type="checkbox" name="custom[<?=$cm['id']?>]" value="Yes" <?=$val == 'Yes' ? 'checked' : ''?>>
                                     <label class="form-check-label small fw-bold"><?=$cm['field_name']?></label>
                                 </div>
@@ -194,7 +194,7 @@ if ($id > 0) {
                     <?php endif; ?>
                     <?php if(!empty($text_fields)): ?>
                     <div class="row mt-2">
-                        <?php foreach($text_fields as $cm): 
+                        <?php foreach($text_fields as $cm):
                             $val = "";
                             if ($id > 0) {
                                 $stmt_val = $pdo->prepare("SELECT field_value FROM citizen_custom_values WHERE citizen_id = ? AND field_id = ?");
@@ -254,8 +254,8 @@ if ($id > 0) {
 
                 <div class="row g-3">
                     <div class="col-md-5">
-                        <button type="button" id="btnSendSync" class="btn btn-info w-100 btn-lg shadow-sm fw-bold" onclick="sendToTablet()">
-                            <i class="bi bi-tablet-landscape-fill"></i> ส่งข้อมูลไปหน้ายืนยัน
+                        <button type="button" class="btn btn-info w-100 btn-lg shadow-sm fw-bold" onclick="sendToTablet()">
+                            <i class="bi bi-tablet-landscape-fill"></i> ส่งข้อมูลไปที่แท็บเล็ต
                         </button>
                     </div>
                     <div class="col-md-5">
@@ -282,17 +282,17 @@ $(document).ready(function() {
     // ฟังก์ชันกลางสำหรับหา Address ID เพื่อลดความซ้ำซ้อนของโค้ด
     function lookupInternalAddress(t, a, p) {
         if (!t || !a || !p) return;
-        
+       
         // ล้างคำนำหน้าขยะออกก่อนส่งไป API เพื่อให้ Match ง่ายขึ้น
         const cleanT = t.replace(/ตำบล|ต\./g, '').trim();
         const cleanA = a.replace(/อำเภอ|อ\./g, '').trim();
         const cleanP = p.replace(/จังหวัด|จ\./g, '').trim();
 
         const url = `api/address_id.php?district=${encodeURIComponent(cleanT)}&amphoe=${encodeURIComponent(cleanA)}&province=${encodeURIComponent(cleanP)}`;
-        
+       
         fetch(url)
             .then(res => res.json())
-            .then(res => { 
+            .then(res => {
                 if (res.status === 'success') {
                     $('#address_id').val(res.address_id);
                     console.log("Found Address ID:", res.address_id);
@@ -326,7 +326,7 @@ $(document).ready(function() {
                 $('#addr_amphoe').val(),
                 $('#addr_province').val()
             );
-        }, 200); 
+        }, 200);
     });
 
     // 3. Reset Address ID เมื่อมีการพิมพ์ (ป้องกันข้อมูลเก่าค้าง)
@@ -347,7 +347,7 @@ $(document).ready(function() {
 async function readSmartCard() {
     const btn = document.querySelector('button[onclick="readSmartCard()"]');
     const originalContent = btn.innerHTML;
-    
+   
     // 1. เริ่มกระบวนการเรียกโปรแกรม Smart Card
     window.location.href = "smartcard://";
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> กำลังเปิดโปรแกรม...';
@@ -360,7 +360,7 @@ async function readSmartCard() {
     try {
         const response = await fetch('http://localhost:8888/read/');
         const data = await response.json(); // ได้รับข้อมูล data ที่นี่
-        
+       
         if(data.error) throw new Error(data.error);
 
         // 2. จัดการ Clean ข้อมูลที่อยู่ (ย้ายมาไว้ตรงนี้เพื่อให้มีตัวแปร data ใช้งาน)
@@ -377,10 +377,10 @@ async function readSmartCard() {
 
         // ตรวจสอบเพศ
         let rawGender = data.Gender ? data.Gender.toString().trim() : "";
-        let detectedGender = (rawGender == "1" || rawGender.toLowerCase() === "male" || rawGender === "ชาย") ? "Male" : 
+        let detectedGender = (rawGender == "1" || rawGender.toLowerCase() === "male" || rawGender === "ชาย") ? "Male" :
                              (rawGender == "2" || rawGender.toLowerCase() === "female" || rawGender === "หญิง") ? "Female" : "";
         setVal('gender', detectedGender);
-        
+       
         // ที่อยู่ (Text fields)
         setVal('addr_number', data.HouseNo + (data.Moo ? ` หมู่ ${data.Moo.replace(/\D/g,'')}` : ''));
         setVal('addr_tambon', cleanT);
@@ -390,10 +390,10 @@ async function readSmartCard() {
         // 4. 🎯 จุดชี้ขาด: เรียกหา Address ID จาก Database
         // ใช้ "ชื่อที่อยู่" ค้นหาแทน "เลขบัตร" เพื่อความแม่นยำในระบบฐานข้อมูล
         const addrUrl = `api/address_id.php?district=${encodeURIComponent(cleanT)}&amphoe=${encodeURIComponent(cleanA)}&province=${encodeURIComponent(cleanP)}`;
-        
+       
         fetch(addrUrl)
             .then(res => res.json())
-            .then(res => { 
+            .then(res => {
                 if(res.status === 'success') {
                     // ใส่ค่าลงใน Hidden Input โดยตรง
                     document.getElementById('address_id').value = res.address_id;
@@ -444,86 +444,76 @@ function autoCheckAge(birthDateStr) {
 }
 
 // 4. Tablet Synchronization
-// 4. Tablet Synchronization (Updated for Token & Static QR)
 async function sendToTablet() {
-    const btnSync = document.getElementById('btnSendSync');
     const formData = {
-        prefix: $('#prefix').val(), 
-        fname: $('#firstname').val(), 
+        prefix: $('#prefix').val(),
+        fname: $('#firstname').val(),
         lname: $('#lastname').val(),
-        idCard: $('#id_card').val(), 
+        idCard: $('#id_card').val(),
         birthdate: $('#birthdate').val(),
-        addr_number: $('#addr_number').val(), 
+        addr_number: $('#addr_number').val(),
         addr_tambon: $('#addr_tambon').val(),
-        addr_amphoe: $('#addr_amphoe').val(), 
+        addr_amphoe: $('#addr_amphoe').val(),
         addr_province: $('#addr_province').val(),
         photo: $('#hidden_photo_data').val()
     };
 
-    if(!formData.idCard || !formData.fname) {
-        Swal.fire('ข้อมูลไม่ครบ', 'กรุณาระบุเลขบัตรและชื่อก่อนส่งตรวจสอบ', 'warning');
-        return;
-    }
-
-    Swal.fire({ title: 'กำลังเตรียมข้อมูล...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    Swal.fire({ title: 'กำลังส่งข้อมูล...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
     try {
-        // 1. Reset สถานะเดิม (ล้าง Token เก่า)
+        // 1. Reset สถานะเดิม
         await fetch('api/sync_reset.php');
 
-        // 2. ส่งข้อมูลไปที่ API (จะมีการสุ่ม Token ใหม่ในฐานข้อมูล)
-        const res = await fetch('api/sync_send.php', { 
-            method: 'POST', 
-            headers: {'Content-Type': 'application/json'}, 
-            body: JSON.stringify(formData) 
+        // 2. ส่งข้อมูลไปที่ Tablet
+        const res = await fetch('api/sync_send.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(formData)
         });
 
-        const data = await res.json();
-        if (!data.success) throw new Error(data.message || 'เกิดข้อผิดพลาดในการส่งข้อมูล');
+        // ตรวจสอบว่า Response เป็น JSON หรือไม่
+        const responseText = await res.text();
+        try {
+            const data = JSON.parse(responseText);
+            if (!res.ok) throw new Error(data.message || 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์');
+        } catch (e) {
+            // ถ้าพังตรงนี้ แสดงว่าค่าที่ส่งกลับมาเป็น HTML (Error PHP)
+            console.error("Server Error Response:", responseText);
+            throw new Error("เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง (Check Console)");
+        }
 
-        // 3. เริ่ม Loop ตรวจสอบสถานะ (Polling)
+        // 3. เริ่ม Loop ตรวจสอบสถานะการยืนยัน
         let timer;
         Swal.fire({
-            title: 'ส่งข้อมูลสำเร็จ', 
-            html: 'ให้ผู้พักสแกน QR Code ที่ตั้งอยู่บนโต๊ะ<br><b class="text-primary">เพื่อตรวจสอบและยืนยันข้อมูล</b>', 
+            title: 'ส่งไปแท็บเล็ตแล้ว',
+            text: 'รอผู้พักตรวจสอบข้อมูลและยืนยัน...',
             icon: 'info',
-            allowOutsideClick: false, 
-            showCancelButton: true, 
-            cancelButtonText: 'ยกเลิกรายการ',
+            allowOutsideClick: false,
+            showCancelButton: true,
+            cancelButtonText: 'ยกเลิก',
             didOpen: () => {
                 Swal.showLoading();
-                btnSync.classList.replace('btn-info', 'btn-warning');
-                btnSync.innerHTML = '<span class="spinner-border spinner-border-sm"></span> กำลังรอการยืนยัน...';
-
                 timer = setInterval(async () => {
                     try {
-                        // เช็คสถานะผ่าน admin_id ปกติ
                         const checkRes = await fetch('api/sync_check.php');
-                        const check = await checkRes.json();
+                        const checkText = await checkRes.text(); // อ่านเป็น Text ก่อน
+                        const check = JSON.parse(checkText); // ค่อยแปลงเป็น JSON
 
                         if(check.status === 'confirmed') {
                             clearInterval(timer);
-                            // ปลดล็อค Checkbox PDPA และติ๊กให้อัตโนมัติ
                             $('#pdpaConsent').prop('disabled', false).prop('checked', true);
-                            
-                            btnSync.classList.replace('btn-warning', 'btn-success');
-                            btnSync.innerHTML = '<i class="bi bi-check-all"></i> ยืนยันข้อมูลแล้ว';
-                            
-                            Swal.fire('สำเร็จ!', 'ผู้พักตรวจสอบและยืนยันข้อมูลเรียบร้อย', 'success');
+                            Swal.fire('ยืนยันแล้ว', 'ผู้พักกดยินยอมข้อมูลเรียบร้อย', 'success');
                         }
-                    } catch (err) { console.error("Polling Error:", err); }
+                    } catch (err) {
+                        console.error("Polling Error:", err);
+                    }
                 }, 2000);
             },
-            willClose: () => {
-                clearInterval(timer);
-                if($('#pdpaConsent').prop('checked') === false) {
-                    btnSync.classList.replace('btn-warning', 'btn-info');
-                    btnSync.innerHTML = '<i class="bi bi-tablet-landscape-fill"></i> ส่งข้อมูลไปหน้ายืนยัน';
-                }
-            }
+            willClose: () => clearInterval(timer)
         });
-    } catch (e) { 
+    } catch (e) {
         console.error(e);
-        Swal.fire('ล้มเหลว', e.message, 'error'); 
+        Swal.fire('ล้มเหลว', e.message, 'error');
     }
-}</script>
+}
+</script>
