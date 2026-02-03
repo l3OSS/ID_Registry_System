@@ -80,6 +80,7 @@ try {
     // 8. ⚙️ สร้างไฟล์ config/db.php (ดึงค่าจาก .env แทนการ Hardcode)
     $db_code = "<?php\n"
         . "// Database connection using .env variables\n"
+        . "date_default_timezone_set('Asia/Bangkok');\n"
         . "if (!class_exists('Dotenv\Dotenv')) {\n"
         . "    \$autoload = dirname(__DIR__) . '/vendor/autoload.php';\n"
         . "    if (file_exists(\$autoload)) {\n"
