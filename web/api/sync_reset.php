@@ -23,21 +23,22 @@ if ($admin_id <= 0) {
 }
 
 try {
-    $stmt = $pdo->prepare(
+$stmt = $pdo->prepare(
         "UPDATE temp_sync_consent
          SET status = 'pending',
              citizen_data = NULL,
+             sync_token = NULL,
+             expires_at = NULL,
              updated_at = CURRENT_TIMESTAMP
          WHERE admin_id = ?"
-    );
-    $stmt->execute([$admin_id]);
+    );    $stmt->execute([$admin_id]);
 
     if ($stmt->rowCount() === 0) {
-        $pdo->prepare(
-            "INSERT INTO temp_sync_consent (admin_id, status, citizen_data)
-             VALUES (?, 'pending', NULL)"
+$pdo->prepare(
+            "INSERT INTO temp_sync_consent (admin_id, status, citizen_data, sync_token, expires_at)
+             VALUES (?, 'pending', NULL, NULL, NULL)"
         )->execute([$admin_id]);
-    }
+            }
 
     echo json_encode([
         'success' => true,

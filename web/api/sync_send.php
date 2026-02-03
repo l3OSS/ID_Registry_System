@@ -20,6 +20,10 @@ if ($admin_id <= 0 || empty($rawData)) {
     exit;
 }
 
+// สร้าง Token แบบสุ่ม 16 ตัวอักษร และตั้งเวลาหมดอายุ 10 นาที
+$sync_token = bin2hex(random_bytes(8)); 
+$expires_at = date('Y-m-d H:i:s', strtotime('+10 minutes'));
+
 /* Address */
 $addr_parts = array_filter([
     $rawData['addr_number'] ?? '',
@@ -62,12 +66,17 @@ if (!empty($rawData['photo']) && strlen($rawData['photo']) > 100) {
     unlink($imagePath);
 }
 
-/* Save DB */
+/* Save DB พร้อม Token และเวลาหมดอายุ */
 $stmt = $pdo->prepare(
-    "INSERT INTO temp_sync_consent (admin_id, citizen_data, status)
-     VALUES (?, ?, 'pending')
-     ON DUPLICATE KEY UPDATE citizen_data = VALUES(citizen_data), status = 'pending'"
+    "INSERT INTO temp_sync_consent (admin_id, sync_token, citizen_data, status, expires_at)
+     VALUES (?, ?, ?, 'pending', ?)
+     ON DUPLICATE KEY UPDATE 
+        sync_token = VALUES(sync_token), 
+        citizen_data = VALUES(citizen_data), 
+        status = 'pending',
+        expires_at = VALUES(expires_at),
+        updated_at = CURRENT_TIMESTAMP"
 );
-$stmt->execute([$admin_id, json_encode($data, JSON_UNESCAPED_UNICODE)]);
+$stmt->execute([$admin_id, $sync_token, json_encode($data, JSON_UNESCAPED_UNICODE), $expires_at]);
 
-echo json_encode(['success' => true]);
+echo json_encode(['success' => true, 'token' => $sync_token]);
