@@ -7655,19 +7655,6 @@ CREATE TABLE IF NOT EXISTS `custom_field_master` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
---
--- Dumping data for table `custom_field_master` ใช้ช่วงทดสอบเท่านั้น
---
-
-INSERT INTO `custom_field_master` (`field_name`, `field_type`, `is_searchable`, `is_active`) VALUES 
-('เช็คบ็อก 1', 'checkbox', '1', '1'),
-('เช็คบ็อก 2', 'checkbox', '1', '1'),
-('เช็คบ็อก 3', 'checkbox', '1', '1'),
-('เช็คบ็อก 4', 'checkbox', '1', '1'),
-('แท็กบ็อก 1', 'text', '1', '1'),
-('แท็กบ็อก 2', 'text', '1', '1'),
-('แท็กบ็อก 3', 'text', '1', '1');
-
 -- --------------------------------------------------------
 
 --
@@ -7681,6 +7668,7 @@ CREATE TABLE IF NOT EXISTS `settings` (
   `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- --------------------------------------------------------
 
 --
@@ -7733,8 +7721,10 @@ CREATE TABLE IF NOT EXISTS `stay_history` (
 
 CREATE TABLE IF NOT EXISTS `temp_sync_consent` (
   `admin_id` int NOT NULL,
+  `sync_token` VARCHAR(64) NULL,
   `citizen_data` text,
   `status` enum('pending','confirmed') DEFAULT 'pending',
+  `expires_at` DATETIME NULL,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`admin_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
