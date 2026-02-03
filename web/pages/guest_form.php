@@ -254,8 +254,8 @@ if ($id > 0) {
 
                 <div class="row g-3">
                     <div class="col-md-5">
-                        <button type="button" class="btn btn-info w-100 btn-lg shadow-sm fw-bold" onclick="sendToTablet()">
-                            <i class="bi bi-tablet-landscape-fill"></i> ส่งข้อมูลไปที่แท็บเล็ต
+                        <button type="button" id="btnSendSync" class="btn btn-info w-100 btn-lg shadow-sm fw-bold" onclick="sendToTablet()">
+                            <i class="bi bi-tablet-landscape-fill"></i> ส่งข้อมูลไปหน้ายืนยัน
                         </button>
                     </div>
                     <div class="col-md-5">
@@ -444,7 +444,9 @@ function autoCheckAge(birthDateStr) {
 }
 
 // 4. Tablet Synchronization
+// 4. Tablet Synchronization (Updated for Token & Static QR)
 async function sendToTablet() {
+    const btnSync = document.getElementById('btnSendSync');
     const formData = {
         prefix: $('#prefix').val(), 
         fname: $('#firstname').val(), 
@@ -458,62 +460,70 @@ async function sendToTablet() {
         photo: $('#hidden_photo_data').val()
     };
 
-    Swal.fire({ title: 'กำลังส่งข้อมูล...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    if(!formData.idCard || !formData.fname) {
+        Swal.fire('ข้อมูลไม่ครบ', 'กรุณาระบุเลขบัตรและชื่อก่อนส่งตรวจสอบ', 'warning');
+        return;
+    }
+
+    Swal.fire({ title: 'กำลังเตรียมข้อมูล...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
     try {
-        // 1. Reset สถานะเดิม
+        // 1. Reset สถานะเดิม (ล้าง Token เก่า)
         await fetch('api/sync_reset.php');
 
-        // 2. ส่งข้อมูลไปที่ Tablet
+        // 2. ส่งข้อมูลไปที่ API (จะมีการสุ่ม Token ใหม่ในฐานข้อมูล)
         const res = await fetch('api/sync_send.php', { 
             method: 'POST', 
             headers: {'Content-Type': 'application/json'}, 
             body: JSON.stringify(formData) 
         });
 
-        // ตรวจสอบว่า Response เป็น JSON หรือไม่
-        const responseText = await res.text();
-        try {
-            const data = JSON.parse(responseText);
-            if (!res.ok) throw new Error(data.message || 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์');
-        } catch (e) {
-            // ถ้าพังตรงนี้ แสดงว่าค่าที่ส่งกลับมาเป็น HTML (Error PHP)
-            console.error("Server Error Response:", responseText);
-            throw new Error("เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง (Check Console)");
-        }
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || 'เกิดข้อผิดพลาดในการส่งข้อมูล');
 
-        // 3. เริ่ม Loop ตรวจสอบสถานะการยืนยัน
+        // 3. เริ่ม Loop ตรวจสอบสถานะ (Polling)
         let timer;
         Swal.fire({
-            title: 'ส่งไปแท็บเล็ตแล้ว', 
-            text: 'รอผู้พักตรวจสอบข้อมูลและยืนยัน...', 
+            title: 'ส่งข้อมูลสำเร็จ', 
+            html: 'ให้ผู้พักสแกน QR Code ที่ตั้งอยู่บนโต๊ะ<br><b class="text-primary">เพื่อตรวจสอบและยืนยันข้อมูล</b>', 
             icon: 'info',
             allowOutsideClick: false, 
             showCancelButton: true, 
-            cancelButtonText: 'ยกเลิก',
+            cancelButtonText: 'ยกเลิกรายการ',
             didOpen: () => {
                 Swal.showLoading();
+                btnSync.classList.replace('btn-info', 'btn-warning');
+                btnSync.innerHTML = '<span class="spinner-border spinner-border-sm"></span> กำลังรอการยืนยัน...';
+
                 timer = setInterval(async () => {
                     try {
+                        // เช็คสถานะผ่าน admin_id ปกติ
                         const checkRes = await fetch('api/sync_check.php');
-                        const checkText = await checkRes.text(); // อ่านเป็น Text ก่อน
-                        const check = JSON.parse(checkText); // ค่อยแปลงเป็น JSON
+                        const check = await checkRes.json();
 
                         if(check.status === 'confirmed') {
                             clearInterval(timer);
+                            // ปลดล็อค Checkbox PDPA และติ๊กให้อัตโนมัติ
                             $('#pdpaConsent').prop('disabled', false).prop('checked', true);
-                            Swal.fire('ยืนยันแล้ว', 'ผู้พักกดยินยอมข้อมูลเรียบร้อย', 'success');
+                            
+                            btnSync.classList.replace('btn-warning', 'btn-success');
+                            btnSync.innerHTML = '<i class="bi bi-check-all"></i> ยืนยันข้อมูลแล้ว';
+                            
+                            Swal.fire('สำเร็จ!', 'ผู้พักตรวจสอบและยืนยันข้อมูลเรียบร้อย', 'success');
                         }
-                    } catch (err) {
-                        console.error("Polling Error:", err);
-                    }
+                    } catch (err) { console.error("Polling Error:", err); }
                 }, 2000);
             },
-            willClose: () => clearInterval(timer)
+            willClose: () => {
+                clearInterval(timer);
+                if($('#pdpaConsent').prop('checked') === false) {
+                    btnSync.classList.replace('btn-warning', 'btn-info');
+                    btnSync.innerHTML = '<i class="bi bi-tablet-landscape-fill"></i> ส่งข้อมูลไปหน้ายืนยัน';
+                }
+            }
         });
     } catch (e) { 
         console.error(e);
         Swal.fire('ล้มเหลว', e.message, 'error'); 
     }
-}
-</script>
+}</script>
