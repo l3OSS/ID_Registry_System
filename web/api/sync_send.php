@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+date_default_timezone_set('Asia/Bangkok');
 /**
  * API: Sync Send
  * Admin ส่งข้อมูลผู้พักที่เพิ่งอ่านจากบัตรไปเก็บในตารางชั่วคราวเพื่อให้แท็บเล็ตดึงไปโชว์
@@ -62,12 +63,24 @@ if (!empty($rawData['photo']) && strlen($rawData['photo']) > 100) {
     unlink($imagePath);
 }
 
-/* Save DB */
-$stmt = $pdo->prepare(
-    "INSERT INTO temp_sync_consent (admin_id, citizen_data, status)
-     VALUES (?, ?, 'pending')
-     ON DUPLICATE KEY UPDATE citizen_data = VALUES(citizen_data), status = 'pending'"
-);
-$stmt->execute([$admin_id, json_encode($data, JSON_UNESCAPED_UNICODE)]);
+// 1. เพิ่มการสร้าง Token และเวลาหมดอายุ (วางไว้ก่อนส่วน Save DB)
+$sync_token = bin2hex(random_bytes(8)); 
+$date = new DateTime("now", new DateTimeZone('Asia/Bangkok'));
+$date->modify('+1 minutes');
+$expires_at = $date->format('Y-m-d H:i:s');
 
-echo json_encode(['success' => true]);
+// 2. ปรับ SQL INSERT/UPDATE ให้เก็บค่าใหม่ลงไปด้วย
+$stmt = $pdo->prepare(
+    "INSERT INTO temp_sync_consent (admin_id, sync_token, citizen_data, status, expires_at)
+     VALUES (?, ?, ?, 'pending', ?)
+     ON DUPLICATE KEY UPDATE 
+        sync_token = VALUES(sync_token), 
+        citizen_data = VALUES(citizen_data), 
+        status = 'pending',
+        expires_at = VALUES(expires_at),
+        updated_at = CURRENT_TIMESTAMP"
+);
+$stmt->execute([$admin_id, $sync_token, json_encode($data, JSON_UNESCAPED_UNICODE), $expires_at]);
+
+// 3. ส่ง Token กลับไปให้หน้าเจ้าหน้าที่ด้วย (เพื่อเอาไปทำเงื่อนไขเช็ค)
+echo json_encode(['success' => true, 'token' => $sync_token]);

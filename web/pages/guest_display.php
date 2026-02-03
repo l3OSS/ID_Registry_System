@@ -13,48 +13,48 @@
 
 // 1. Configuration & Global State
 let currentStatus = 'none';
-const POLL_INTERVAL = 1500; // Check every 1.5 seconds
+let syncToken = ''; // กุญแจสำคัญที่จะส่งไปยืนยัน
+const POLL_INTERVAL = 1500;
 
-// 2. Main Sync Process
+// เก็บตัวแปร Interval ไว้เพื่อให้สั่งหยุด (Clear) ได้
 const syncService = setInterval(async () => {
     try {
-        const res = await fetch('api/sync_check.php');
-        if (!res.ok) throw new Error('Network response was not ok');
-       
-        // --- ส่วนที่แก้ไข: กรองขยะ HTML ออกก่อน Parse JSON ---
-        const text = await res.text(); // อ่านเป็นข้อความดิบก่อน
+        // ยิงไปที่ API โดยแนบ syncToken ไปด้วย (ถ้ามี)
+        const res = await fetch(`api/sync_check.php?t=${syncToken}`);
+        if (!res.ok) throw new Error('Network response error');
+        
+        const text = await res.text();
         let data;
         try {
-            // ค้นหาตำแหน่งเริ่มต้น { และสิ้นสุด } ของ JSON เพื่อตัดขยะ <br> หรือช่องว่างทิ้ง
             const jsonStart = text.indexOf('{');
             const jsonEnd = text.lastIndexOf('}') + 1;
-            if (jsonStart === -1) return; // ถ้าไม่พบรูปแบบ JSON ให้ข้ามรอบนี้ไป
-           
-            const cleanJson = text.substring(jsonStart, jsonEnd);
-            data = JSON.parse(cleanJson);
-        } catch (parseError) {
-            console.warn("JSON ขัดข้อง (พบขยะ):", text);
-            return; // ข้ามไปรอบถัดไป
-        }
-        // --- จบส่วนที่แก้ไข ---
+            if (jsonStart === -1) return;
+            data = JSON.parse(text.substring(jsonStart, jsonEnd));
+        } catch (parseError) { return; }
 
-        // Handle Logic based on status from DB
+        // --- Logic การจัดการสถานะ ---
         if (data.status === 'pending' && data.citizen_data) {
             if (currentStatus !== 'pending') {
                 currentStatus = 'pending';
+                // บันทึก Token ที่ได้จาก API ไว้ใช้กดยืนยัน
+                syncToken = data.sync_token || ''; 
                 renderConsentForm(data.citizen_data, data.admin_id);
             }
-        }
+        } 
         else if (data.status === 'confirmed') {
-             // เพิ่มกรณีสถานะยืนยันแล้ว เพื่อให้หน้าจอเปลี่ยนสถานะ
-             if (currentStatus !== 'confirmed') {
+            if (currentStatus !== 'confirmed') {
                 currentStatus = 'confirmed';
-                // แสดงหน้าจอขอบคุณ
-             }
+                
+                // [จุดชี้ขาด] เมื่อยืนยันสำเร็จ ให้หยุดการดึงข้อมูลทันที (แก้ปัญหาเด้งกลับ)
+                clearInterval(syncService); 
+                
+                showSuccessView();
+            }
         }
-        else {
+        else if (data.status === 'none') {
             if (currentStatus !== 'none') {
                 currentStatus = 'none';
+                syncToken = ''; // ล้าง Token เมื่อข้อมูลหมดอายุ
                 resetStandbyView();
             }
         }
