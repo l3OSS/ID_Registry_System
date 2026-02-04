@@ -95,9 +95,29 @@
 - ทั้งคอมพิวเตอร์และแท็บเล็ตต้องต่อ Wi-Fi หรือ LAN วงเดียวกัน
 - ตั้งค่า Firewall เปิดพอร์ต (ส่วนใหญ่คือพอร์ต 80) เพื่ออนุญาตให้แท็บเล็ต "มองเห็น" เว็บเซิร์ฟเวอร์ในคอมพิวเตอร์
 - ตั้งค่า Static IP เพื่อป้องกัน Router เปลี่ยนเลข IP เครื่องคอมฯ
-- ที่หน้าจอแท็บเบล็ตเข้าผ่านเลข IP เช่น http://192.168.1.50/ชื่อโปรเจค/pages/guest_display.php
+- ที่หน้าจอแท็บเบล็ตเข้าผ่านเลข IP เช่น http://เลข ip/ชื่อโปรเจค/pages/guest_display.php
 - เมื่อผู้เข้าพักกดยินยอม ระบบจะกดเช็คบ็อกให้อัตโนมัติ ให้เรากดเช็คบ็อกการตรวจทานและบันทึกข้อมูล
 - (สามารถสร้าง Qr code แล้วปล่อยฟรีไวไฟให้ผู้พักเชื่อมต่อและสแกนลิงค์ยืนยันข้อมูลด้วยตนเองได้)
+- ปัญหา "You don't have permission" คลิกซ้ายที่ไอคอน WAMP (มุมล่างขวา) เลือก Apache > httpd-vhosts.conf
+
+```
+# Virtual Hosts
+#
+<VirtualHost _default_:80>
+  ServerName localhost
+  ServerAlias localhost
+  DocumentRoot "${INSTALL_DIR}/www"
+  <Directory "${INSTALL_DIR}/www/">
+    Options +Indexes +Includes +FollowSymLinks +MultiViews
+    AllowOverride All
+    # เปลี่ยนจาก Require local เป็นบรรทัดล่างนี้
+    Require all granted
+    Require local
+  </Directory>
+</VirtualHost>
+```
+- Save ไฟล์ และทำการ Restart All Services ของ WAMP
+
 6. ระบบจะทำการบันทึกข้อมูลผู้เข้าพัก
 - กรณีไม่มีข้อมูลเก่า ระบบจะบันทึกแล้วส่งไปยังหน้าประวัติ
 - กรณีมีข้อมูลเก่า ระบบจะแสดงหน้าจอเปรียบเทียบและตรวจสอบสถานะการพัก เพื่อให้ผู้ดูแลตัดสินใจ
