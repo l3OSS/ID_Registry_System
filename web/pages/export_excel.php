@@ -52,10 +52,15 @@ $where_sql = !empty($conditions) ? "WHERE " . implode(" AND ", $conditions) : ""
 
 try {
     // แก้ SQL เพื่อหาวันที่เข้าพักล่าสุด และวันที่ออกล่าสุด (ถ้า Active ให้ว่างไว้)
-    $sql = "SELECT c.*, TIMESTAMPDIFF(YEAR, c.birthdate, CURDATE()) AS age,
+$sql = "SELECT c.*, 
+            TIMESTAMPDIFF(YEAR, c.birthdate, CURDATE()) AS age,
+            al.subdistrict AS lookup_tambon, 
+            al.district AS lookup_amphoe, 
+            al.province AS lookup_province,
             sh.check_in as last_in,
             CASE WHEN sh.status = 'Active' THEN NULL ELSE sh.check_out END as last_out
             FROM citizens c 
+            LEFT JOIN address_lookup al ON c.address_id = al.id
             LEFT JOIN (
                 SELECT citizen_id, check_in, check_out, status
                 FROM stay_history
@@ -141,10 +146,14 @@ foreach ($data as $i => $r) {
     $sheet->setCellValue('H' . $currentRow, $r['last_in'] ? date('d/m/Y', strtotime($r['last_in'])) : '-');
     $sheet->setCellValue('I' . $currentRow, $r['last_out'] ? date('d/m/Y', strtotime($r['last_out'])) : '-');
 
-    $sheet->setCellValue('J' . $currentRow, $r['addr_number']);
-    $sheet->setCellValue('K' . $currentRow, $r['addr_tambon']);
-    $sheet->setCellValue('L' . $currentRow, $r['addr_amphoe']);
-    $sheet->setCellValue('M' . $currentRow, $r['addr_province']);
+    $tambon   = $r['lookup_tambon']   ?? $r['addr_tambon']   ?? '-';
+    $amphoe   = $r['lookup_amphoe']   ?? $r['addr_amphoe']   ?? '-';
+    $province = $r['lookup_province'] ?? $r['addr_province'] ?? '-';
+
+    $sheet->setCellValue('J' . $currentRow, $r['addr_number'] ?? '-');
+    $sheet->setCellValue('K' . $currentRow, $tambon);
+    $sheet->setCellValue('L' . $currentRow, $amphoe);
+    $sheet->setCellValue('M' . $currentRow, $province);
 
     // ส่วนของ Vulnerable และ Custom Field (เริ่มที่คอลัมน์ที่ 14)
     $stmt_v = $pdo->prepare("SELECT v_id FROM citizen_vulnerable_map WHERE citizen_id = ?");
