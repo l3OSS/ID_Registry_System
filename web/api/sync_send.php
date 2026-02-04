@@ -66,7 +66,7 @@ if (!empty($rawData['photo']) && strlen($rawData['photo']) > 100) {
 // 1. เพิ่มการสร้าง Token และเวลาหมดอายุ (วางไว้ก่อนส่วน Save DB)
 $sync_token = bin2hex(random_bytes(8)); 
 $date = new DateTime("now", new DateTimeZone('Asia/Bangkok'));
-$date->modify('+1 minutes');
+$date->modify('+5 minutes');
 $expires_at = $date->format('Y-m-d H:i:s');
 
 // 2. ปรับ SQL INSERT/UPDATE ให้เก็บค่าใหม่ลงไปด้วย

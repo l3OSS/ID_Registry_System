@@ -118,7 +118,7 @@ if ($id > 0) {
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">เบอร์โทรศัพท์ติดต่อ</label>
-                                <input type="text" name="phone" id="phone" class="form-control" placeholder="089-123-4567" value="<?php echo htmlspecialchars($citizen['phone'] ?? ''); ?>">
+                                <input type="text" name="phone" id="phone" class="form-control" placeholder="089-123..." value="<?php echo htmlspecialchars($citizen['phone'] ?? ''); ?>">
                             </div>
                         </div>
                     </div>
