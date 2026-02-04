@@ -44,7 +44,11 @@ if ($is_filtered) {
                 $params[':last4'] = "%$search%";
             }
         } else {
-            $conditions[] = "(c.firstname LIKE :q1 OR c.lastname LIKE :q2 OR c.addr_tambon LIKE :q3 OR c.addr_amphoe LIKE :q4 OR c.addr_province LIKE :q5)";
+            $conditions[] = "(c.firstname LIKE :q1 
+                  OR c.lastname LIKE :q2 
+                  OR al.subdistrict LIKE :q3 
+                  OR al.district LIKE :q4 
+                  OR al.province LIKE :q5)";
             $params[':q1'] = "%$search%"; $params[':q2'] = "%$search%"; 
             $params[':q3'] = "%$search%"; $params[':q4'] = "%$search%"; $params[':q5'] = "%$search%";
         }
@@ -114,25 +118,34 @@ if ($is_filtered) {
 
     $where_sql = count($conditions) > 0 ? "WHERE " . implode(" AND ", $conditions) : "";
 
-    try {
-        $count_sql = "SELECT COUNT(DISTINCT c.id) FROM citizens c $where_sql";
-        $stmt_count = $pdo->prepare($count_sql);
-        $stmt_count->execute($params);
-        $total_items = (int)$stmt_count->fetchColumn();
-        $total_pages = ceil($total_items / $items_per_page);
+try {
+    // 🔍 1. ส่วนนับจำนวน (เพิ่ม LEFT JOIN al)
+    $count_sql = "SELECT COUNT(DISTINCT c.id) 
+                  FROM citizens c 
+                  LEFT JOIN address_lookup al ON c.address_id = al.id 
+                  $where_sql";
+    
+    $stmt_count = $pdo->prepare($count_sql);
+    $stmt_count->execute($params);
+    $total_items = (int)$stmt_count->fetchColumn();
+    $total_pages = ceil($total_items / $items_per_page);
 
-        $sql = "SELECT c.*, al.province AS lookup_province, TIMESTAMPDIFF(YEAR, c.birthdate, CURDATE()) AS age,
-                    (SELECT MAX(check_in) FROM stay_history WHERE citizen_id = c.id) as last_stay_date 
+    // 🔍 2. ส่วนดึงข้อมูล (ตรวจสอบว่า SQL ของคุณมี al.id แล้ว)
+    $sql = "SELECT c.*, 
+                   al.subdistrict AS lookup_tambon, 
+                   al.district AS lookup_amphoe, 
+                   al.province AS lookup_province, 
+                   TIMESTAMPDIFF(YEAR, c.birthdate, CURDATE()) AS age,
+                   (SELECT MAX(check_in) FROM stay_history WHERE citizen_id = c.id) as last_stay_date 
             FROM citizens c 
             LEFT JOIN address_lookup al ON c.address_id = al.id 
             $where_sql 
             ORDER BY last_stay_date DESC, c.created_at DESC 
             LIMIT $items_per_page OFFSET $offset";
 
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $citizens = $stmt->fetchAll();
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $citizens = $stmt->fetchAll();
     } catch (PDOException $e) {
         error_log("Search Error: " . $e->getMessage());
         $citizens = [];
