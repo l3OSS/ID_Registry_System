@@ -9,7 +9,21 @@ require_once 'core/security.php';
 require_once 'core/log.php';
 
 // --- 1. Access & Security Check ---
-checkPermission(2); 
+$can_access = (isset($_SESSION['role_level']) && ((int)$_SESSION['role_level'] === 1 || (int)$_SESSION['role_level'] === 2));
+
+if (!$can_access) {
+    echo '
+    <div class="container mt-5">
+        <div class="alert alert-danger shadow-sm border-0 p-4 rounded-3 text-center">
+            <i class="bi bi-exclamation-octagon-fill fs-1 d-block mb-3"></i>
+            <h4 class="fw-bold">ขออภัย คุณไม่มีสิทธิ์เข้าถึงหน้าจัดการผู้ใช้</h4>
+            <a href="index.php" class="btn btn-outline-danger rounded-pill px-4">
+                <i class="bi bi-arrow-left"></i> กลับหน้าหลัก
+            </a>
+        </div>
+    </div>';
+    exit; 
+}
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT) ?: 0;
 $my_role = (int)$_SESSION['role_level'];

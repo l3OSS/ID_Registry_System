@@ -24,9 +24,24 @@ use PhpOffice\PhpSpreadsheet\Style\{Alignment, Border, Fill};
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 
-checkPermission(2);
+// --- 1. Access & Security Check ---
+$can_access = (isset($_SESSION['role_level']) && ((int)$_SESSION['role_level'] === 1 || (int)$_SESSION['role_level'] === 2));
 
-// --- 4. Filtering Logic ---
+if (!$can_access) {
+    echo '
+    <div class="container mt-5">
+        <div class="alert alert-danger shadow-sm border-0 p-4 rounded-3 text-center">
+            <i class="bi bi-exclamation-octagon-fill fs-1 d-block mb-3"></i>
+            <h4 class="fw-bold">ขออภัย คุณไม่มีสิทธิ์เข้าถึงหน้าจัดการผู้ใช้</h4>
+            <a href="index.php" class="btn btn-outline-danger rounded-pill px-4">
+                <i class="bi bi-arrow-left"></i> กลับหน้าหลัก
+            </a>
+        </div>
+    </div>';
+    exit; 
+}
+
+// --- 2. Filtering Logic ---
 $search = $_GET['search'] ?? '';
 $gender = $_GET['gender'] ?? '';
 $status = $_GET['status'] ?? '';
@@ -79,7 +94,7 @@ $sql = "SELECT c.*,
     die("Error: " . $e->getMessage());
 }
 
-// --- 5. Excel Generation ---
+// --- 3. Excel Generation ---
 $spreadsheet = new Spreadsheet();
 $sheet = $spreadsheet->getActiveSheet();
 $sheet->setTitle('ResidentReport');
@@ -128,7 +143,7 @@ $headerStyle = [
 ];
 $sheet->getStyle("A1:{$lastColStr}2")->applyFromArray($headerStyle);
 
-// --- 6. Data Injection ---
+// --- 4. Data Injection ---
 $currentRow = 3;
 foreach ($data as $i => $r) {
     $id_card = decryptData($r['id_card_enc']);
@@ -181,7 +196,7 @@ foreach ($data as $i => $r) {
 $sheet->getStyle("A3:{$lastColStr}" . ($currentRow - 1))->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
 $sheet->getStyle("A3:{$lastColStr}" . ($currentRow - 1))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-// --- 7. Output ---
+// --- 5. Output ---
 $filename = "Resident_Report_" . date('Ymd_His') . ".xlsx";
 header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 header('Content-Disposition: attachment;filename="' . $filename . '"');

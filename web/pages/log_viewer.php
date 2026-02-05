@@ -6,8 +6,14 @@
 
 // --- 1. Access Control ---
 require_once 'core/auth.php';
-// Level 2 (Admin) can view, but only Level 1 (Developer) can clear logs.
-checkPermission(2); 
+// --- 1. Access & Security Check ---
+if (!isset($_SESSION['role_level']) || (int)$_SESSION['role_level'] > 3) {
+    // หากไม่ใช่แอดมิน (เช่น เป็นคนทั่วไปที่หลุดเข้ามา) ให้เด้งออกหรือแสดงข้อความ
+    header('Location: index.php');
+    exit();
+}
+
+
 
 // --- 2. Action: Clear Logs (Developer Only) ---
 if (isset($_POST['clear_logs']) && ($_SESSION['role_level'] ?? 99) == 1) {

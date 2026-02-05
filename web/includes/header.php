@@ -81,13 +81,15 @@ $app_title = "ระบบเก็บข้อมูลการเข้าพ
                     <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                         <li><a class="dropdown-item" href="index.php?page=profile"><i class="bi bi-person-circle"></i> แก้ไขโปรไฟล์</a></li>
                         
-                        <?php if (in_array($current_role, [1, 2])): ?>
                             <li><hr class="dropdown-divider"></li>
                             <li><h6 class="dropdown-header">การจัดการระบบ</h6></li>
+                        <?php if (in_array($current_role, [1, 2])): ?>
                             <li><a class="dropdown-item" href="index.php?page=user_manage"><i class="bi bi-people"></i> จัดการผู้ใช้</a></li>
-                            <li><a class="dropdown-item" href="index.php?page=setting"><i class="bi bi-gear"></i> ตั้งค่าระบบ</a></li>
-                            <li><a class="dropdown-item" href="index.php?page=log_viewer"><i class="bi bi-journal-text"></i> ดูประวัติระบบ (Log)</a></li>
                         <?php endif; ?>
+                        <?php if ($_SESSION['role_level'] == 1): ?>
+                            <li><a class="dropdown-item" href="index.php?page=setting"><i class="bi bi-gear"></i> ตั้งค่าระบบ</a></li>
+                        <?php endif; ?>
+                            <li><a class="dropdown-item" href="index.php?page=log_viewer"><i class="bi bi-journal-text"></i> ดูประวัติระบบ (Log)</a></li>
 
                         <li><hr class="dropdown-divider"></li>
                         <li>
