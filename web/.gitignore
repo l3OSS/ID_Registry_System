@@ -5,10 +5,6 @@
 # PHP Composer
 /vendor/
 
-# PHP Sensitive
-/config/db.php
-
-
 # Install lock
 /install/install.lock
 
