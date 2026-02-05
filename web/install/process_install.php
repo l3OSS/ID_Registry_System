@@ -13,10 +13,10 @@ $db_name = $_POST['db_name'] ?? '';
 $db_user = $_POST['db_user'] ?? '';
 $db_pass = $_POST['db_pass'] ?? '';
 
-$admin_user     = $_POST['admin_user'] ?? '';
-$admin_pass_raw = $_POST['admin_pass'] ?? '';
+$admin_user         = $_POST['admin_user'] ?? '';
+$admin_pass_raw     = $_POST['admin_pass'] ?? '';
 $admin_pass_confirm = $_POST['admin_pass_confirm'] ?? '';
-$admin_nickname = $_POST['admin_nickname'] ?? '';
+$admin_nickname     = $_POST['admin_nickname'] ?? '';
 
 // 🟢 ตรวจสอบความถูกต้องของรหัสผ่าน
 if (strlen($admin_pass_raw) < 6) {
@@ -46,8 +46,8 @@ try {
     $stmt = $pdo->prepare("INSERT INTO users (username, password_hash, nickname, role_level) VALUES (?, ?, ?, 1)");
     $stmt->execute([$admin_user, $admin_pass_hash, $admin_nickname]);
 
-    // 5. 🛡️ สร้างไฟล์ .env (เก็บกุญแจและความลับ)
-    // สุ่มกุญแจ 32 bytes แล้ว Encode เป็น Base64 เพื่อใช้กับ AES-256-CBC
+    // 5. 🛡️ สร้างไฟล์ .env (เก็บค่า Config ที่ได้จากการกรอกฟอร์ม)
+    // สุ่มกุญแจสำหรับ Encryption ระบบ (ถ้ามี)
     $secure_key = base64_encode(openssl_random_pseudo_bytes(32)); 
     
     $env_content = "# Database Settings\n"
@@ -73,56 +73,17 @@ try {
                      ON DUPLICATE KEY UPDATE install_log = ?";
     $pdo->prepare($sql_settings)->execute([$install_log, $install_log]);
 
-
-    // 7. [ข้ามส่วน security.php] -> ไฟล์นี้จะถูก Commit ไว้ใน core/ เรียบร้อยแล้ว
-
-
-    // 8. ⚙️ สร้างไฟล์ config/db.php (ดึงค่าจาก .env แทนการ Hardcode)
-    $db_code = "<?php\n"
-        . "// Database connection using .env variables\n"
-        . "date_default_timezone_set('Asia/Bangkok');\n"
-        . "if (!class_exists('Dotenv\Dotenv')) {\n"
-        . "    \$autoload = dirname(__DIR__) . '/vendor/autoload.php';\n"
-        . "    if (file_exists(\$autoload)) {\n"
-        . "        require_once \$autoload;\n"
-        . "    }\n"
-        . "}\n\n"
-        . "if (empty(\$_ENV['DB_HOST'])) {\n"
-        . "    try {\n"
-        . "        \$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');\n"
-        . "        \$dotenv->load();\n"
-        . "    } catch (Exception \$e) { }\n"
-        . "}\n\n"
-        . "\$host = \$_ENV['DB_HOST'] ?? 'localhost';\n"
-        . "\$db   = \$_ENV['DB_NAME'] ?? '';\n"
-        . "\$user = \$_ENV['DB_USER'] ?? '';\n"
-        . "\$pass = \$_ENV['DB_PASS'] ?? '';\n"
-        . "\$charset = 'utf8mb4';\n\n"
-        . "\$dsn = \"mysql:host=\$host;dbname=\$db;charset=\$charset\";\n"
-        . "\$options = [\n"
-        . "    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,\n"
-        . "    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,\n"
-        . "    PDO::ATTR_EMULATE_PREPARES   => false,\n"
-        . "];\n\n"
-        . "try {\n"
-        . "    \$pdo = new PDO(\$dsn, \$user, \$pass, \$options);\n"
-        . "} catch (PDOException \$e) {\n"
-        . "    die('Connection failed: ' . \$e->getMessage());\n"
-        . "}\n";
-
-    file_put_contents('../config/db.php', $db_code);
-
-    // 9. ล็อคการติดตั้ง
+    // 7. ล็อคการติดตั้ง
     file_put_contents('install.lock', date('Y-m-d H:i:s'));
 
     // 🟢 แสดงผลสำเร็จ
     echo "<div style='font-family:sans-serif; text-align:center; padding:50px;'>";
     echo "<h1 style='color:green;'>✅ ติดตั้งระบบเรียบร้อยแล้ว!</h1>";
-    echo "<p>ระบบได้สร้างไฟล์ <b>.env</b> และตั้งค่าฐานข้อมูลให้คุณแล้ว</p>";
+    echo "<p>ระบบได้สร้างไฟล์ <b>.env</b> เพื่อเชื่อมต่อกับไฟล์ <b>config/db.php</b> เรียบร้อยแล้ว</p>";
     echo "<div style='background:#fff3cd; padding:20px; border-radius:10px; display:inline-block; margin-top:20px;'>";
     echo "<p style='color:#856404;'><b>🛡️ คำแนะนำด้านความปลอดภัย:</b></p>";
-    echo "<p>1. ไฟล์ <b>.env</b> ถูกสร้างขึ้นที่ Root Directory (กรุณาอย่าลบทิ้ง)</p>";
-    echo "<p>2. กรุณาลบโฟลเดอร์ <b>/install</b> ออกจาก Server ทันที</p>";
+    echo "<p>1. ข้อมูลการเชื่อมต่อถูกเก็บไว้ที่ไฟล์ <b>.env</b> (กรุณาอย่าลบทิ้ง)</p>";
+    echo "<p>2. <b>สำคัญมาก:</b> กรุณาลบโฟลเดอร์ <b>/install</b> ออกจาก Server ทันที</p>";
     echo "</div>";
     echo "<br><br><a href='../index.php' style='padding:15px 30px; background:blue; color:white; text-decoration:none; border-radius:30px; font-weight:bold;'>เข้าสู่ระบบได้เลย</a>";
     echo "</div>";
