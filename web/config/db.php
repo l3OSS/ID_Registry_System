@@ -5,7 +5,7 @@ date_default_timezone_set('Asia/Bangkok');
 // 1. ตรวจสอบการติดตั้ง Vendor (Composer)
 $autoload = dirname(__DIR__) . '/vendor/autoload.php';
 if (!file_exists($autoload)) {
-    die("Error: 'vendor/autoload.php' not found. Please run 'composer install'");
+    die("Error: 'vendor/autoload.php' not found. Please run terminal command 'composer install' on your current working directory.");
 }
 require_once $autoload;
 
@@ -15,7 +15,7 @@ try {
         $dotenv = Dotenv\Dotenv::createImmutable(dirname(__DIR__));
         $dotenv->load();
     } else {
-        die("Error: '.env' file missing. Please create one from '.env.example'");
+        die("Error: '.env' file missing. Please reinstall one");
     }
 } catch (Exception $e) {
     // กรณีไฟล์ .env มีรูปแบบผิดพลาด
