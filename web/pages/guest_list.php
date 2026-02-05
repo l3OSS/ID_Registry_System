@@ -265,11 +265,12 @@ $export_query = http_build_query($_GET);
 </div>
 <?php endif; ?>
 
-<?php if (in_array($_SESSION['role_level'], [1, 2]) && $is_filtered && $total_items > 0): ?>
 <div class="d-flex justify-content-end mb-3">
+<?php if (in_array($_SESSION['role_level'], [1, 2]) && $is_filtered && $total_items > 0): ?>
     <a href="pages/export_excel.php?<?php echo $export_query; ?>" class="btn btn-success btn-sm shadow-sm">
         <i class="bi bi-file-earmark-excel"></i> ส่งออก Excel (<?php echo $total_items; ?> รายการ)
     </a>
+<?php endif; ?>
 
     <label class="small fw-bold text-muted"> </label>
     <select class="form-select form-select-sm" style="width: auto; margin-left: 12px; " onchange="changeLimit(this.value)">
@@ -279,7 +280,6 @@ $export_query = http_build_query($_GET);
         <option value="500" <?php echo ($items_per_page == 1000) ? 'selected' : ''; ?>>1000 รายการ</option>
     </select>
 </div>
-<?php endif; ?>
 
 <div class="table-responsive bg-white shadow-sm rounded p-3">
     <table class="table table-hover align-middle">
