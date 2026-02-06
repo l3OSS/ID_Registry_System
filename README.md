@@ -63,6 +63,7 @@
 - ตั้งค่า Static IP เพื่อป้องกัน Router เปลี่ยนเลข IP เครื่องคอมฯ
 - ตั้งค่า Firewall เปิดพอร์ต: 80 หรือ 8080 เพื่ออนุญาตให้มือถือ "มองเห็น" เว็บเซิร์ฟเวอร์
 - สร้าง Qr code ด้วยลิงค์ `http://Static IP/project/pages/guest_display.php` แล้วปริ๊นไว้ให้ผู้พักสแกน
+- - ตัวอย่าง `http://192.168.1.50/Reg/pages/guest_display.php`
 
 ### ปัญหาหน้าจอมือถือแจ้งข้อความ "You don't have permission"
 - คลิกซ้ายที่ไอคอน WAMP (มุมล่างขวา) เลือก Apache > httpd-vhosts.conf ทำการแก้ไขและ Restart All Services
