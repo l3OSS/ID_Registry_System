@@ -80,7 +80,6 @@
     AllowOverride All
     # เปลี่ยนจาก Require local เป็นบรรทัดล่างนี้
     Require all granted
-    Require local
   </Directory>
 </VirtualHost>
 ```
