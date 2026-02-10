@@ -2,26 +2,37 @@
 // config/db.php
 date_default_timezone_set('Asia/Bangkok');
 
-// 1. ตรวจสอบการติดตั้ง Vendor (Composer)
+// 1. ตรวจสอบ Autoload (Composer)
 $autoload = dirname(__DIR__) . '/vendor/autoload.php';
 if (!file_exists($autoload)) {
-    die("Error: 'vendor/autoload.php' not found. Please run terminal command 'composer install' on your current working directory.");
+    // ถ้ายังไม่มีโฟลเดอร์ vendor ให้แจ้งเตือน หรือถ้ามีหน้า install ก็เด้งไปเลย
+    die("<div style='text-align:center; margin-top:50px; font-family:sans-serif;'>
+            <h2>❌ ไม่พบโฟลเดอร์ Vendor</h2>
+            <p>กรุณารันคำสั่ง <code>composer install</code> ก่อนใช้งานระบบ</p>
+         </div>");
 }
 require_once $autoload;
 
 // 2. โหลดไฟล์ .env
-try {
-    if (file_exists(dirname(__DIR__) . '/.env')) {
-        $dotenv = Dotenv\Dotenv::createImmutable(dirname(__DIR__));
-        $dotenv->load();
+$envFile = dirname(__DIR__) . '/.env';
+
+if (!file_exists($envFile)) {
+    // ถ้าไม่มีไฟล์ .env และเราอยู่ในหน้าหลัก ให้เด้งไปหน้าติดตั้ง
+    if (file_exists(dirname(__DIR__) . '/install/index.php')) {
+        header("Location: install/index.php");
+        exit;
     } else {
-        die("Error: '.env' file missing. Please reinstall one");
+        die("<h2>❌ ไม่พบไฟล์ตั้งค่า (.env)</h2><p>กรุณาทำการติดตั้งระบบใหม่</p>");
     }
-} catch (Exception $e) {
-    // กรณีไฟล์ .env มีรูปแบบผิดพลาด
-    die("Error loading .env file: " . $e->getMessage());
 }
 
+// ถ้ามีไฟล์ .env ค่อยเริ่มโหลด Dotenv
+try {
+    $dotenv = Dotenv\Dotenv::createImmutable(dirname(__DIR__));
+    $dotenv->load();
+} catch (Exception $e) {
+    die("Error loading .env file: " . $e->getMessage());
+}
 // 3. เตรียมตัวแปร (ใช้การดึงจาก $_ENV)
 $host = $_ENV['DB_HOST'] ?? 'localhost';
 $db   = $_ENV['DB_NAME'] ?? '';
