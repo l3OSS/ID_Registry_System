@@ -31,25 +31,33 @@ $my_level = (int)$_SESSION['role_level'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
     $delete_id = filter_input(INPUT_POST, 'delete_id', FILTER_VALIDATE_INT);
     
-    // Fetch target user info for validation
-    $stmt = $pdo->prepare("SELECT role_level, username FROM users WHERE id = ?");
-    $stmt->execute([$delete_id]);
-    $target = $stmt->fetch();
-
-    if (!$target) {
-        $_SESSION['error_msg'] = "ไม่พบผู้ใช้งานในระบบ";
-    } elseif ($delete_id === $my_id) {
+    // 1. ตรวจสอบเบื้องต้น
+    if ($delete_id === $my_id) {
         $_SESSION['error_msg'] = "ไม่อนุญาตให้ลบบัญชีตัวเอง";
     } elseif ($my_level !== 1) {
         $_SESSION['error_msg'] = "สิทธิ์ของคุณไม่เพียงพอสำหรับการลบผู้ใช้งาน";
     } else {
-        // Execute Deletion
-        $pdo->prepare("DELETE FROM users WHERE id = ?")->execute([$delete_id]);
-        writeLog($pdo, 'DELETE_USER', "ลบผู้ใช้: {$target['username']} (ID: $delete_id)");
-        $_SESSION['success_msg'] = "ลบข้อมูลทีมงานเรียบร้อยแล้ว";
+        try {
+            // 2. ดึงข้อมูลก่อนลบเพื่อทำ Log
+            $stmt = $pdo->prepare("SELECT username FROM users WHERE id = ?");
+            $stmt->execute([$delete_id]);
+            $target = $stmt->fetch();
+
+            if ($target) {
+                // 3. ปลอดภัยกว่าด้วยการระบุเงื่อนไขใน SQL เพิ่ม (ป้องกันการเจาะข้ามสิทธิ์)
+                $pdo->prepare("DELETE FROM users WHERE id = ? AND id != ?")->execute([$delete_id, $my_id]);
+                writeLog($pdo, 'DELETE_USER', "ลบผู้ใช้: {$target['username']} (ID: $delete_id)");
+                $_SESSION['success_msg'] = "ลบข้อมูลทีมงานเรียบร้อยแล้ว";
+            } else {
+                $_SESSION['error_msg'] = "ไม่พบผู้ใช้งานในระบบ";
+            }
+        } catch (PDOException $e) {
+            $_SESSION['error_msg'] = "เกิดข้อผิดพลาดทางเทคนิค";
+        }
     }
     
-    header("Location: index.php?page=user_manage");
+    // 🟢 แก้ไขปัญหา Headers already sent ด้วย JS
+    echo "<script>window.location.href='index.php?page=user_manage';</script>";
     exit;
 }
 
