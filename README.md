@@ -22,7 +22,7 @@
 2. ดาวน์โหลดไฟล์ติดตั้งเหล่านี้
 - `web` คัดลอกและเปลี่ยนชื่อก่อนนำไปวางที่ `www/project`
 - `installer/id-bridge` คัดลอกยังตำแหน่งที่ต้องการ คลิกขวาที่ไฟล์ setup.bat ด้วยสิทธิ์ Admin เพื่อติดตั้ง
-- สร้างโฟลเดอร์ config, uploads ภายใต้ `www/project`
+- สร้างโฟลเดอร์ uploads ภายใต้ `www/project`
 3. ติดตั้ง Library ผ่าน Command Prompt
 - เปิด Terminal พิมพ์คำสั่ง cd ตามด้วยที่อยู่โปรเจค เช่น `cd C:\wamp64\www\project`
 - รันคำสั่ง `composer install`
