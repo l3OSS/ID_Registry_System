@@ -1,0 +1,19 @@
+# Reg — HTTP hardening (WAMP/Apache 2.4: AllowOverride all + authz_core/rewrite เปิดอยู่)
+
+# S8: กันเสิร์ฟไฟล์ .env (มี ENCRYPTION_KEY + รหัส DB) ตรงผ่าน HTTP
+<FilesMatch "^\.env">
+    Require all denied
+</FilesMatch>
+
+# กันไฟล์ระบบที่ไม่ควรเสิร์ฟตรง (schema, lock, เอกสาร)
+# หมายเหตุ: ไม่ block .json เพราะ address autocomplete โหลด assets/.../db.json
+<FilesMatch "\.(sql|lock|md|dist|example)$">
+    Require all denied
+</FilesMatch>
+
+# S4: รูปบัตร PDPA ชั่วคราวใน uploads/temp/ — เข้าถึงได้ผ่าน api/sync_image.php
+# (ยืนยัน token/session) เท่านั้น ห้ามเปิดไฟล์ตรง
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^uploads/temp/ - [F,L]
+</IfModule>
