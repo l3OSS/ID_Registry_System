@@ -1,0 +1,52 @@
+# === Secrets / config ===
+.env
+.env.*
+!.env.example
+
+# === Composer dependencies ===
+/vendor/
+
+# === Installation state ===
+install/install.lock
+
+# === Runtime uploads (PDPA temp images ฯลฯ) ===
+/uploads/*
+!/uploads/.gitkeep
+
+# === DB backups (จาก scripts/backup_db.php) ===
+/backups/
+
+# === Out-of-scope copies (ต้นทาง/สำเนาเดิม — ไม่ track) ===
+/ID_Registry_System-main/
+/ID_Registry_System-main.zip
+
+# === Local-only (ไม่ track) ===
+# Design/    = โน้ตออกแบบ/แนวคิดส่วนตัว (My CLAUDE.md)
+# id-bridge/ = ไบนารีตัวอ่านบัตร .NET (.exe/.dll) มาจาก repo installer/id-bridge
+/Design/
+/id-bridge/
+
+# === เอกสารแผนงาน/บันทึกภายใน (ไม่ขึ้น repo สาธารณะ) ===
+# CLAUDE.md / CONVENTIONS.md = คำสั่ง+ข้อตกลงภายใน · docs/ = PROGRESS/code-audit/papyrus/INSTALL
+/CLAUDE.md
+/CONVENTIONS.md
+/docs/
+
+# === Local editor/agent state ===
+.claude/settings.local.json
+
+# === Logs / dumps ที่หลุดมาโดยไม่ตั้งใจ (install/sql/ ยัง track ปกติ) ===
+*.log
+/*.sql
+/*.sql.gz
+*.bak
+*.orig
+
+# === OS / editor junk ===
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
