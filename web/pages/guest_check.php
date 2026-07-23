@@ -43,17 +43,10 @@ function processCheckInDate($input_date) {
 }
 
 /**
- * ค้นหา ID ที่อยู่จากฐานข้อมูล Master
+ * ค้นหา ID ที่อยู่จากฐานข้อมูล Master — ตรรกะจริงอยู่ที่ core/functions.php (ใช้ร่วมกับ guest_import/api)
  */
 function lookupAddressId($pdo, $tambon, $amphoe, $province) {
-    $t = str_replace(['ตำบล', 'ต.'], '', trim($tambon));
-    $a = str_replace(['อำเภอ', 'อ.'], '', trim($amphoe));
-    $p = str_replace(['จังหวัด', 'จ.'], '', trim($province));
-
-    $stmt = $pdo->prepare("SELECT id FROM address_lookup WHERE subdistrict LIKE ? AND district LIKE ? AND province LIKE ? LIMIT 1");
-    $stmt->execute(["%$t%", "%$a%", "%$p%"]);
-    $res = $stmt->fetch();
-    return $res ? $res['id'] : null;
+    return lookupAddressIdByName($pdo, $tambon, $amphoe, $province);
 }
 
 /**
@@ -102,6 +95,18 @@ if (!$address_id && !empty($post_data['addr_tambon'])) {
     $address_id = lookupAddressId($pdo, $post_data['addr_tambon'], $post_data['addr_amphoe'], $post_data['addr_province']);
 }
 
+        // ภูมิลำเนา (กล่อง 3) — สวิตช์เปิด = ใช้ที่อยู่ตามทะเบียนบ้าน จึงเก็บแค่ธง ไม่เก็บซ้ำ (กันข้อมูลสองชุดเพี้ยนกัน)
+        $home_same = !empty($post_data['home_same_as_reg']) ? 1 : 0;
+        $home_address_id  = null;
+        $home_addr_number = null;
+        if (!$home_same) {
+            $home_address_id = !empty($post_data['home_address_id']) ? intval($post_data['home_address_id']) : null;
+            if (!$home_address_id && !empty($post_data['home_addr_tambon'])) {
+                $home_address_id = lookupAddressId($pdo, $post_data['home_addr_tambon'], $post_data['home_addr_amphoe'] ?? '', $post_data['home_addr_province'] ?? '');
+            }
+            $home_addr_number = ($post_data['home_addr_number'] ?? '') !== '' ? $post_data['home_addr_number'] : null;
+        }
+
         // จัดการรูปภาพ
         $photo_base64 = $post_data['photo_base64'] ?? '';
         $file_path_db = $old_data['photo_path'] ?? "";
@@ -144,19 +149,19 @@ if ($age >= 60 && !in_array(2, $post_data['vulnerable'])) {
         if (!$old_data) {
             // ส่วน INSERT สำหรับคนใหม่ (P7: กำหนด public_id 13 หลักไม่ซ้ำ)
             $public_id = generatePublicId($pdo);
-            $sql = "INSERT INTO citizens (public_id, id_card_hash, id_card_enc, id_card_last4, prefix, firstname, lastname, gender, birthdate, address_id, addr_number, phone_enc, medical_info, notes, photo_path)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $sql = "INSERT INTO citizens (public_id, id_card_hash, id_card_enc, id_card_last4, prefix, firstname, lastname, gender, birthdate, address_id, addr_number, home_same_as_reg, home_address_id, home_addr_number, phone_enc, medical_info, notes, photo_path)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             $stmt = $pdo->prepare($sql);
-            $stmt->execute([$public_id, $id_card_hash, $id_card_enc, $id_card_last4, $prefix, $firstname, $lastname, $gender, $birthdate, $address_id, $post_data['addr_number'], $phone_enc, $medical_info, $notes, $file_path_db]);
+            $stmt->execute([$public_id, $id_card_hash, $id_card_enc, $id_card_last4, $prefix, $firstname, $lastname, $gender, $birthdate, $address_id, $post_data['addr_number'], $home_same, $home_address_id, $home_addr_number, $phone_enc, $medical_info, $notes, $file_path_db]);
             $citizen_id = $pdo->lastInsertId();
         } else {
             $citizen_id = $old_data['id'];
 
             if ($decision == 'update') {
                 // บันทึกเฉพาะเลข ID ที่อยู่ และเลขที่บ้านเท่านั้น
-                $sql = "UPDATE citizens SET prefix=?, firstname=?, lastname=?, gender=?, birthdate=?, address_id=?, addr_number=?, phone_enc=?, medical_info=?, notes=?, photo_path=?, id_card_last4=?, updated_at=NOW() 
-                        WHERE id=?";   
-                $pdo->prepare($sql)->execute([$prefix, $firstname, $lastname, $gender, $birthdate, $address_id, $post_data['addr_number'], $phone_enc, $medical_info, $notes, $file_path_db, $id_card_last4, $citizen_id]);
+                $sql = "UPDATE citizens SET prefix=?, firstname=?, lastname=?, gender=?, birthdate=?, address_id=?, addr_number=?, home_same_as_reg=?, home_address_id=?, home_addr_number=?, phone_enc=?, medical_info=?, notes=?, photo_path=?, id_card_last4=?, updated_at=NOW()
+                        WHERE id=?";
+                $pdo->prepare($sql)->execute([$prefix, $firstname, $lastname, $gender, $birthdate, $address_id, $post_data['addr_number'], $home_same, $home_address_id, $home_addr_number, $phone_enc, $medical_info, $notes, $file_path_db, $id_card_last4, $citizen_id]);
                 $log_action = "UPDATE_CITIZEN";
             }
         }

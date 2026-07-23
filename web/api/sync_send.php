@@ -38,6 +38,7 @@ $addr_parts = array_filter([
     !empty($rawData['addr_tambon'])   ? t('addr.tambon') . $rawData['addr_tambon']   : '',
     !empty($rawData['addr_amphoe'])   ? t('addr.amphoe') . $rawData['addr_amphoe']   : '',
     !empty($rawData['addr_province']) ? t('addr.changwat') . $rawData['addr_province'] : '',
+    !empty($rawData['addr_zipcode'])  ? preg_replace('/\D/', '', (string)$rawData['addr_zipcode']) : '',
 ]);
 
 $full_address = $addr_parts ? implode(' ', $addr_parts) : t('api.no_address');

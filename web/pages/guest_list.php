@@ -47,13 +47,18 @@ if ($is_filtered) {
                 $params[':last4'] = "%$search%";
             }
         } else {
-            $conditions[] = "(c.firstname LIKE :q1 
-                  OR c.lastname LIKE :q2 
-                  OR al.subdistrict LIKE :q3 
-                  OR al.district LIKE :q4 
-                  OR al.province LIKE :q5)";
-            $params[':q1'] = "%$search%"; $params[':q2'] = "%$search%"; 
+            // ค้นได้ทั้งที่อยู่ตามทะเบียนบ้าน (al) และภูมิลำเนา (hl) — คอลัมน์จังหวัดในตารางแสดงภูมิลำเนาก่อน
+            $conditions[] = "(c.firstname LIKE :q1
+                  OR c.lastname LIKE :q2
+                  OR al.subdistrict LIKE :q3
+                  OR al.district LIKE :q4
+                  OR al.province LIKE :q5
+                  OR hl.subdistrict LIKE :q6
+                  OR hl.district LIKE :q7
+                  OR hl.province LIKE :q8)";
+            $params[':q1'] = "%$search%"; $params[':q2'] = "%$search%";
             $params[':q3'] = "%$search%"; $params[':q4'] = "%$search%"; $params[':q5'] = "%$search%";
+            $params[':q6'] = "%$search%"; $params[':q7'] = "%$search%"; $params[':q8'] = "%$search%";
         }
     }
 
@@ -123,9 +128,10 @@ if ($is_filtered) {
 
 try {
     // 🔍 1. ส่วนนับจำนวน (เพิ่ม LEFT JOIN al)
-    $count_sql = "SELECT COUNT(DISTINCT c.id) 
-                  FROM citizens c 
-                  LEFT JOIN address_lookup al ON c.address_id = al.id 
+    $count_sql = "SELECT COUNT(DISTINCT c.id)
+                  FROM citizens c
+                  LEFT JOIN address_lookup al ON c.address_id = al.id
+                  LEFT JOIN address_lookup hl ON c.home_address_id = hl.id
                   $where_sql";
     
     $stmt_count = $pdo->prepare($count_sql);
@@ -137,12 +143,14 @@ try {
     $sql = "SELECT c.*, 
                    al.subdistrict AS lookup_tambon, 
                    al.district AS lookup_amphoe, 
-                   al.province AS lookup_province, 
+                   al.province AS lookup_province,
+                   hl.province AS home_province,
                    TIMESTAMPDIFF(YEAR, c.birthdate, CURDATE()) AS age,
-                   (SELECT MAX(check_in) FROM stay_history WHERE citizen_id = c.id) as last_stay_date 
-            FROM citizens c 
-            LEFT JOIN address_lookup al ON c.address_id = al.id 
-            $where_sql 
+                   (SELECT MAX(check_in) FROM stay_history WHERE citizen_id = c.id) as last_stay_date
+            FROM citizens c
+            LEFT JOIN address_lookup al ON c.address_id = al.id
+            LEFT JOIN address_lookup hl ON c.home_address_id = hl.id
+            $where_sql
             ORDER BY last_stay_date DESC, c.created_at DESC 
             LIMIT $items_per_page OFFSET $offset";
 
@@ -364,7 +372,12 @@ $export_query = http_build_query($_GET);
                             <?php endforeach; ?>
                         </div>
                     </td>
-                    <td><small class="text-muted"><?php echo htmlspecialchars($c['lookup_province'] ?? $c['addr_province'] ?? '-'); ?></small></td>
+                    <?php // จังหวัด: ภูมิลำเนาก่อน — ไม่มีค่อยใช้ที่อยู่ตามทะเบียนบ้าน
+                          $prov = pickDisplayAddress(
+                              ['province' => $c['home_province'] ?? ''],
+                              ['province' => $c['lookup_province'] ?? $c['addr_province'] ?? '']
+                          ); ?>
+                    <td><small class="text-muted"><?php echo htmlspecialchars($prov['province'] !== '' ? $prov['province'] : '-'); ?></small></td>
                     <td class="text-end">
                         <div class="btn-group shadow-sm">
                             <a href="index.php?page=guest_history&id=<?php echo htmlspecialchars($c['public_id'] ?? ''); ?>" class="btn btn-sm btn-info text-white"><i class="bi bi-clock-history"></i></a>

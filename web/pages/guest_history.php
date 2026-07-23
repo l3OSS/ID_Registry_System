@@ -17,9 +17,12 @@ $id = resolveCitizenId($pdo, $public_id);
 
 // --- 1. Fetch Comprehensive Citizen Profile ---
 $sql_citizen = "SELECT c.*, al.subdistrict, al.district, al.province, al.zipcode,
-                       TIMESTAMPDIFF(YEAR, c.birthdate, CURDATE()) AS age 
-                FROM citizens c 
-                LEFT JOIN address_lookup al ON c.address_id = al.id 
+                       hl.subdistrict AS home_subdistrict, hl.district AS home_district,
+                       hl.province AS home_province, hl.zipcode AS home_zipcode,
+                       TIMESTAMPDIFF(YEAR, c.birthdate, CURDATE()) AS age
+                FROM citizens c
+                LEFT JOIN address_lookup al ON c.address_id = al.id
+                LEFT JOIN address_lookup hl ON c.home_address_id = hl.id
                 WHERE c.id = :id";
 $stmt = $pdo->prepare($sql_citizen);
 $stmt->execute([':id' => $id]);
@@ -147,15 +150,32 @@ writeLog($pdo, 'VIEW_HISTORY', "Accessed profile: $fullname (ID: $id)");
                         <div class="col-md-8">
                             <strong><i class="bi bi-geo-alt-fill text-primary"></i> <?php echo e('hist.address'); ?></strong>
                             <span class="text-dark">
-                                <?php 
+                                <?php
+                                    // ที่อยู่ที่แสดง: ภูมิลำเนา (กล่อง 3) ก่อน — ไม่มีค่อยใช้ที่อยู่ตามทะเบียนบ้าน
+                                    $ad = pickDisplayAddress([
+                                        'number'   => $citizen['home_addr_number'] ?? '',
+                                        'tambon'   => $citizen['home_subdistrict'] ?? '',
+                                        'amphoe'   => $citizen['home_district'] ?? '',
+                                        'province' => $citizen['home_province'] ?? '',
+                                        'zipcode'  => $citizen['home_zipcode'] ?? '',
+                                    ], [
+                                        'number'   => $citizen['addr_number'] ?? '',
+                                        'tambon'   => $citizen['subdistrict'] ?? '',
+                                        'amphoe'   => $citizen['district'] ?? '',
+                                        'province' => $citizen['province'] ?? '',
+                                        'zipcode'  => $citizen['zipcode'] ?? '',
+                                    ]);
                                     $a = array_filter([
-                                        $citizen['addr_number'] ? "".$citizen['addr_number'] : "",
-                                        $citizen['subdistrict'] ? t('addr.tambon').$citizen['subdistrict'] : "",
-                                        $citizen['district'] ? t('addr.amphoe').$citizen['district'] : "",
-                                        $citizen['province'] ? t('addr.changwat').$citizen['province'] : "",
-                                        $citizen['zipcode'] ?? ""
+                                        $ad['number']   ? $ad['number'] : "",
+                                        $ad['tambon']   ? t('addr.tambon').$ad['tambon'] : "",
+                                        $ad['amphoe']   ? t('addr.amphoe').$ad['amphoe'] : "",
+                                        $ad['province'] ? t('addr.changwat').$ad['province'] : "",
+                                        $ad['zipcode']  ?: ""
                                     ]);
                                     echo !empty($a) ? implode(' ', $a) : "-";
+                                    if ($ad['is_home']) {
+                                        echo ' <span class="badge bg-info-subtle text-info-emphasis fw-normal">' . e('hist.from_home') . '</span>';
+                                    }
                                 ?>
                             </span>
                         </div>

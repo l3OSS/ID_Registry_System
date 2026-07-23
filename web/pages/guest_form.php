@@ -28,9 +28,11 @@ $v_master = $pdo->query("SELECT id, v_name FROM vulnerable_master ORDER BY id AS
 
 if ($id > 0) {
     // 2. Fetch Existing Citizen Data
-    $sql = "SELECT c.*, al.subdistrict AS l_tambon, al.district AS l_amphoe, al.province AS l_province
+    $sql = "SELECT c.*, al.subdistrict AS l_tambon, al.district AS l_amphoe, al.province AS l_province, al.zipcode AS l_zipcode,
+                   hl.subdistrict AS h_tambon, hl.district AS h_amphoe, hl.province AS h_province, hl.zipcode AS h_zipcode
             FROM citizens c
             LEFT JOIN address_lookup al ON c.address_id = al.id
+            LEFT JOIN address_lookup hl ON c.home_address_id = hl.id
             WHERE c.id = :id";
     $stmt = $pdo->prepare($sql);
     $stmt->execute([':id' => $id]);
@@ -44,6 +46,15 @@ if ($id > 0) {
         $citizen['addr_tambon']   = $citizen['l_tambon']   ?? $citizen['addr_tambon']   ?? '';
         $citizen['addr_amphoe']   = $citizen['l_amphoe']   ?? $citizen['addr_amphoe']   ?? '';
         $citizen['addr_province'] = $citizen['l_province'] ?? $citizen['addr_province'] ?? '';
+        // รหัสไปรษณีย์ไม่ได้เก็บใน citizens — มาจาก address_lookup ตาม address_id เท่านั้น
+        $citizen['addr_zipcode']  = $citizen['l_zipcode']  ?? '';
+
+        // ภูมิลำเนา: เก็บเป็น home_address_id เหมือนกัน · same=1 → ใช้ที่อยู่ตามทะเบียนบ้าน (home_* ว่าง)
+        $citizen['home_same_as_reg']   = (int)($citizen['home_same_as_reg'] ?? 1);
+        $citizen['home_addr_tambon']   = $citizen['h_tambon']  ?? '';
+        $citizen['home_addr_amphoe']   = $citizen['h_amphoe']  ?? '';
+        $citizen['home_addr_province'] = $citizen['h_province'] ?? '';
+        $citizen['home_addr_zipcode']  = $citizen['h_zipcode'] ?? '';
 
         if (!empty($citizen['photo_path']) && file_exists($citizen['photo_path'])) {
             $photo_show = $citizen['photo_path'];
@@ -136,26 +147,69 @@ if ($id > 0) {
                
                 <div class="p-3 mb-4 border-0 rounded bg-light shadow-sm" style="border-left: 5px solid #0d6efd !important;">
                     <label class="fw-bold text-primary mb-3"><i class="bi bi-geo-alt-fill"></i> <?php echo e('form.addr_section'); ?></label>
+                    <!-- 4 ช่องเดิมใช้ col-md (แบ่งเท่ากันจาก 10 คอลัมน์ที่เหลือ) เพื่อเว้นที่ให้รหัสไปรษณีย์ -->
                     <div class="row g-3">
-                        <div class="col-md-3">
+                        <div class="col-md">
                             <label class="form-label small fw-bold"><?php echo e('form.addr_number'); ?></label>
                             <input type="text" name="addr_number" id="addr_number" class="form-control" placeholder="<?php echo e('form.addr_number_ph'); ?>" value="<?php echo htmlspecialchars($citizen['addr_number'] ?? ''); ?>">
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md">
                             <label class="form-label small fw-bold"><?php echo e('form.addr_tambon'); ?></label>
                             <input type="text" name="addr_tambon" id="addr_tambon" class="form-control" placeholder="<?php echo e('form.addr_tambon_ph'); ?>" value="<?php echo htmlspecialchars($citizen['addr_tambon'] ?? ''); ?>">
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md">
                             <label class="form-label small fw-bold"><?php echo e('form.addr_amphoe'); ?></label>
                             <input type="text" name="addr_amphoe" id="addr_amphoe" class="form-control" value="<?php echo htmlspecialchars($citizen['addr_amphoe'] ?? ''); ?>">
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md">
                             <label class="form-label small fw-bold"><?php echo e('form.addr_province'); ?></label>
                             <input type="text" name="addr_province" id="addr_province" class="form-control" value="<?php echo htmlspecialchars($citizen['addr_province'] ?? ''); ?>">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-bold"><?php echo e('form.addr_zipcode'); ?></label>
+                            <input type="text" name="addr_zipcode" id="addr_zipcode" class="form-control" maxlength="5" inputmode="numeric" placeholder="<?php echo e('form.addr_zipcode_ph'); ?>" value="<?php echo htmlspecialchars($citizen['addr_zipcode'] ?? ''); ?>">
                         </div>
                     </div>
                     <div class="mt-2 text-muted" style="font-size: 0.85rem;">
                         <i class="bi bi-magic"></i> <?php echo e('form.addr_hint'); ?>
+                    </div>
+                </div>
+
+                <?php /* เรคคอร์ดใหม่: สวิตช์ปิดไว้ก่อน (กรอกภูมิลำเนาเอง) · แก้ไข: ตามค่าที่บันทึกไว้ */ ?>
+                <?php $home_same = ($id > 0) ? (int)($citizen['home_same_as_reg'] ?? 1) : 0; ?>
+                <div class="p-3 mb-4 border-0 rounded bg-light shadow-sm" style="border-left: 5px solid #0dcaf0 !important;">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                        <label class="fw-bold text-primary mb-0"><i class="bi bi-signpost-2-fill"></i> <?php echo e('form.home_section'); ?></label>
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" role="switch" name="home_same_as_reg" id="home_same_as_reg" value="1" <?php echo $home_same ? 'checked' : ''; ?>>
+                            <label class="form-check-label small fw-bold" for="home_same_as_reg"><?php echo e('form.home_same'); ?></label>
+                        </div>
+                    </div>
+                    <input type="hidden" name="home_address_id" id="home_address_id" value="<?php echo htmlspecialchars((string)($citizen['home_address_id'] ?? '')); ?>">
+                    <div class="row g-3" id="homeAddrBlock">
+                        <div class="col-md">
+                            <label class="form-label small fw-bold"><?php echo e('form.addr_number'); ?></label>
+                            <input type="text" name="home_addr_number" id="home_addr_number" class="form-control home-addr" data-part="addr_number" placeholder="<?php echo e('form.addr_number_ph'); ?>" value="<?php echo htmlspecialchars($citizen['home_addr_number'] ?? ''); ?>">
+                        </div>
+                        <div class="col-md">
+                            <label class="form-label small fw-bold"><?php echo e('form.addr_tambon'); ?></label>
+                            <input type="text" name="home_addr_tambon" id="home_addr_tambon" class="form-control home-addr" data-part="addr_tambon" placeholder="<?php echo e('form.addr_tambon_ph'); ?>" value="<?php echo htmlspecialchars($citizen['home_addr_tambon'] ?? ''); ?>">
+                        </div>
+                        <div class="col-md">
+                            <label class="form-label small fw-bold"><?php echo e('form.addr_amphoe'); ?></label>
+                            <input type="text" name="home_addr_amphoe" id="home_addr_amphoe" class="form-control home-addr" data-part="addr_amphoe" value="<?php echo htmlspecialchars($citizen['home_addr_amphoe'] ?? ''); ?>">
+                        </div>
+                        <div class="col-md">
+                            <label class="form-label small fw-bold"><?php echo e('form.addr_province'); ?></label>
+                            <input type="text" name="home_addr_province" id="home_addr_province" class="form-control home-addr" data-part="addr_province" value="<?php echo htmlspecialchars($citizen['home_addr_province'] ?? ''); ?>">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-bold"><?php echo e('form.addr_zipcode'); ?></label>
+                            <input type="text" name="home_addr_zipcode" id="home_addr_zipcode" class="form-control home-addr" data-part="addr_zipcode" maxlength="5" inputmode="numeric" placeholder="<?php echo e('form.addr_zipcode_ph'); ?>" value="<?php echo htmlspecialchars($citizen['home_addr_zipcode'] ?? ''); ?>">
+                        </div>
+                    </div>
+                    <div class="mt-2 text-muted" style="font-size: 0.85rem;">
+                        <i class="bi bi-info-circle"></i> <?php echo e('form.home_same_hint'); ?>
                     </div>
                 </div>
 
@@ -315,27 +369,46 @@ const L = <?php echo json_encode([
 // 1. Initializations
 $(document).ready(function() {
     // ฟังก์ชันกลางสำหรับหา Address ID เพื่อลดความซ้ำซ้อนของโค้ด
-    function lookupInternalAddress(t, a, p) {
+    // opts: ระบุช่องปลายทางได้ เพื่อใช้ซ้ำกับกล่อง "ภูมิลำเนา" (ค่าเริ่มต้น = ที่อยู่ตามทะเบียนบ้าน)
+    function lookupInternalAddress(t, a, p, opts) {
         if (!t || !a || !p) return;
-       
+
+        const idField  = (opts && opts.idField)  || '#address_id';
+        const zipField = (opts && opts.zipField) || '#addr_zipcode';
+
         // ล้างคำนำหน้าขยะออกก่อนส่งไป API เพื่อให้ Match ง่ายขึ้น
         const cleanT = stripAddrPrefix(t);
         const cleanA = stripAddrPrefix(a);
         const cleanP = stripAddrPrefix(p);
 
         const url = `api/address_id.php?district=${encodeURIComponent(cleanT)}&amphoe=${encodeURIComponent(cleanA)}&province=${encodeURIComponent(cleanP)}`;
-       
+
         fetch(url)
             .then(res => res.json())
             .then(res => {
                 if (res.status === 'success') {
-                    $('#address_id').val(res.address_id);
-                    console.log("Found Address ID:", res.address_id);
+                    $(idField).val(res.address_id);
+                    // เติมรหัสไปรษณีย์ให้เฉพาะตอนที่ยังว่าง (บัตรประชาชนไม่มีรหัสไปรษณีย์ / ไม่ทับค่าที่ผู้ใช้กรอกเอง)
+                    if (res.zipcode && !$(zipField).val()) $(zipField).val(res.zipcode);
+                    // .val() ไม่ยิง event → ถ้าสวิตช์ "ภูมิลำเนาเหมือนทะเบียนบ้าน" เปิดอยู่ ต้องสั่ง sync เอง
+                    if (idField === '#address_id' && window._syncHomeAddr) window._syncHomeAddr();
+                    console.log("Found Address ID:", res.address_id, idField);
                 } else {
-                    console.warn("Address ID not found in DB");
+                    console.warn("Address ID not found in DB", idField);
                 }
             })
             .catch(err => console.error("Fetch Error:", err));
+    }
+
+    // ภูมิลำเนา: ช่องปลายทางคนละชุดกับที่อยู่ตามทะเบียนบ้าน
+    const HOME_TARGET = { idField: '#home_address_id', zipField: '#home_addr_zipcode' };
+    function lookupHomeAddress() {
+        lookupInternalAddress(
+            $('#home_addr_tambon').val(),
+            $('#home_addr_amphoe').val(),
+            $('#home_addr_province').val(),
+            HOME_TARGET
+        );
     }
 
     // 1. Address Autocomplete (jquery.Thailand.js)
@@ -345,15 +418,29 @@ $(document).ready(function() {
             $district: $('#addr_tambon'),
             $amphoe: $('#addr_amphoe'),
             $province: $('#addr_province'),
-            onSelect: function(data) {
+            $zipcode: $('#addr_zipcode'),
+            // ชื่อ callback ของไลบรารีเวอร์ชันนี้คือ onDataFill (ไม่ใช่ onSelect — ของเดิมจึงไม่เคยถูกเรียก)
+            onDataFill: function(data) {
                 // เมื่อเลือกจากลิสต์ ให้เรียกฟังก์ชันหา ID ทันที
                 lookupInternalAddress(data.district, data.amphoe, data.province);
+            }
+        });
+
+        // กล่อง 3 "ภูมิลำเนา" — autocomplete ชุดของตัวเอง (ใช้ฐานข้อมูลไฟล์เดียวกัน)
+        $.Thailand({
+            database: './assets/jquery.Thailand.js/database/db.json',
+            $district: $('#home_addr_tambon'),
+            $amphoe: $('#home_addr_amphoe'),
+            $province: $('#home_addr_province'),
+            $zipcode: $('#home_addr_zipcode'),
+            onDataFill: function(data) {
+                lookupInternalAddress(data.district, data.amphoe, data.province, HOME_TARGET);
             }
         });
     }
 
     // 2. ดักจับตอน "ออกจากช่องกรอก" (Blur) กรณีพิมพ์เองแบบแมนนวล
-    $('#addr_tambon, #addr_amphoe, #addr_province').on('blur', function() {
+    $('#addr_tambon, #addr_amphoe, #addr_province, #addr_zipcode').on('blur', function() {
         // หน่วงเวลาเล็กน้อยเพื่อให้ค่าจาก Thailand.js เติมเสร็จก่อน (กรณีเลือกจากลิสต์)
         setTimeout(function() {
             lookupInternalAddress(
@@ -365,11 +452,45 @@ $(document).ready(function() {
     });
 
     // 3. Reset Address ID เมื่อมีการพิมพ์ (ป้องกันข้อมูลเก่าค้าง)
-    $('#addr_tambon, #addr_amphoe, #addr_province').on('input', function(e) {
+    $('#addr_tambon, #addr_amphoe, #addr_province, #addr_zipcode').on('input', function(e) {
         if (e.isTrusted) { // ตรวจสอบว่าเป็นการพิมพ์จริงจากมนุษย์ ไม่ใช่สคริปต์เติมให้
             $('#address_id').val('');
         }
     });
+
+    // 4. กล่อง 3 "ภูมิลำเนา" — blur/input ชุดของตัวเอง (ทำงานเฉพาะตอนสวิตช์ปิด = กรอกเอง)
+    $('#home_addr_tambon, #home_addr_amphoe, #home_addr_province, #home_addr_zipcode').on('blur', function() {
+        setTimeout(lookupHomeAddress, 200);
+    });
+    $('#home_addr_tambon, #home_addr_amphoe, #home_addr_province, #home_addr_zipcode').on('input', function(e) {
+        if (e.isTrusted) $('#home_address_id').val('');
+    });
+
+    // 5. สวิตช์ "ที่อยู่เดียวกับที่อยู่ตามทะเบียนบ้าน"
+    //    เปิด = ดึงที่อยู่จากกล่อง 2 มาแสดง + ล็อกช่อง (ฝั่งเซิร์ฟเวอร์เก็บแค่ธง same=1, home_* เป็น NULL)
+    const homeSwitch = document.getElementById('home_same_as_reg');
+    if (homeSwitch) {
+        const syncHome = function () {
+            const on = homeSwitch.checked;
+            // ต้องกรอง [name] — typeahead โคลนช่องเป็น .tt-hint (คลาสเดิมแต่ไม่มี id/name) ไว้โชว์ตัวหนังสือจาง
+            document.querySelectorAll('#homeAddrBlock input.home-addr[name]').forEach(function (inp) {
+                const src = document.getElementById(inp.dataset.part);
+                if (on) inp.value = src ? src.value : '';
+                inp.readOnly = on;
+                inp.classList.toggle('bg-body-secondary', on);
+            });
+            if (on) $('#home_address_id').val($('#address_id').val());
+        };
+        homeSwitch.addEventListener('change', syncHome);
+
+        // แก้ที่อยู่ตามทะเบียนบ้านระหว่างที่สวิตช์เปิดอยู่ → ภูมิลำเนาตามไปด้วย
+        $('#addr_number, #addr_tambon, #addr_amphoe, #addr_province, #addr_zipcode').on('input change', function () {
+            if (homeSwitch.checked) syncHome();
+        });
+        // อ่านบัตร/แก้ไขข้อมูลเดิม: เติมค่าเริ่มต้นให้ตรงสถานะสวิตช์ตั้งแต่โหลดหน้า
+        window._syncHomeAddr = syncHome;
+        syncHome();
+    }
 
     // วันที่ทั้งหมดแสดงเป็น พ.ศ. (เลขไทย) แต่ค่าที่ submit/เก็บ DB ยังเป็น ค.ศ. ISO (ดู initThaiDate)
     document.querySelectorAll('.thai-date').forEach(function (el) {
@@ -430,6 +551,8 @@ async function readSmartCard() {
         setVal('addr_tambon', cleanT);
         setVal('addr_amphoe', cleanA);
         setVal('addr_province', cleanP);
+        // บัตรไม่มีรหัสไปรษณีย์ — ล้างค่าเก่าไว้ก่อน แล้วรอ address_id.php เติมให้ตามที่อยู่ใหม่
+        setVal('addr_zipcode', '');
 
         // 4. 🎯 จุดชี้ขาด: เรียกหา Address ID จาก Database
         // ใช้ "ชื่อที่อยู่" ค้นหาแทน "เลขบัตร" เพื่อความแม่นยำในระบบฐานข้อมูล
@@ -441,6 +564,7 @@ async function readSmartCard() {
                 if(res.status === 'success') {
                     // ใส่ค่าลงใน Hidden Input โดยตรง
                     document.getElementById('address_id').value = res.address_id;
+                    if (res.zipcode) document.getElementById('addr_zipcode').value = res.zipcode;
                     console.log("Verified Address ID:", res.address_id);
                 } else {
                     console.warn("Address not found in database lookup");
@@ -648,6 +772,7 @@ async function sendToTablet() {
         addr_tambon: $('#addr_tambon').val(),
         addr_amphoe: $('#addr_amphoe').val(),
         addr_province: $('#addr_province').val(),
+        addr_zipcode: $('#addr_zipcode').val(),
         photo: $('#hidden_photo_data').val()
     };
 

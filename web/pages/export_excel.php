@@ -44,8 +44,13 @@ if (!empty($search)) {
         $conditions[] = "c.id_card_hash = :hash";
         $params[':hash'] = hashID($search);
     } else {
-        $conditions[] = "(c.firstname LIKE :q OR c.lastname LIKE :q OR c.addr_province LIKE :q)";
-        $params[':q'] = "%$search%";
+        // ห้ามใช้ชื่อ placeholder ซ้ำ — PDO ตั้ง EMULATE_PREPARES=false ไว้ ใช้ :q ซ้ำจะได้ HY093 (ของเดิมพังตรงนี้)
+        // ค้นจังหวัดจากตาราง lookup ทั้งภูมิลำเนา (hl) และทะเบียนบ้าน (al) ให้ตรงกับคอลัมน์ที่ export ออกไป
+        $conditions[] = "(c.firstname LIKE :q1 OR c.lastname LIKE :q2
+                          OR al.province LIKE :q3 OR hl.province LIKE :q4
+                          OR c.addr_province LIKE :q5)";
+        $params[':q1'] = "%$search%"; $params[':q2'] = "%$search%"; $params[':q3'] = "%$search%";
+        $params[':q4'] = "%$search%"; $params[':q5'] = "%$search%";
     }
 }
 
@@ -63,10 +68,14 @@ $sql = "SELECT c.*,
             al.subdistrict AS lookup_tambon, 
             al.district AS lookup_amphoe, 
             al.province AS lookup_province,
+            hl.subdistrict AS home_tambon,
+            hl.district AS home_amphoe,
+            hl.province AS home_province,
             sh.check_in as last_in,
             CASE WHEN sh.status = 'Active' THEN NULL ELSE sh.check_out END as last_out
-            FROM citizens c 
+            FROM citizens c
             LEFT JOIN address_lookup al ON c.address_id = al.id
+            LEFT JOIN address_lookup hl ON c.home_address_id = hl.id
             LEFT JOIN (
                 SELECT citizen_id, check_in, check_out, status
                 FROM stay_history
@@ -92,8 +101,21 @@ $sheet->setTitle('ResidentReport');
 
 $spreadsheet->getDefaultStyle()->getFont()->setName('Sarabun')->setSize(14);
 
-// หัวข้อพื้นฐาน (รวม 13 คอลัมน์แรก)
-$base_headers = [t('export.col_no'), t('export.col_id_card'), t('export.col_id_last4'), t('export.col_fullname'), t('export.col_gender'), t('export.col_age'), t('export.col_phone'), t('export.col_checkin'), t('export.col_checkout'), t('export.col_address'), t('export.col_tambon'), t('export.col_amphoe'), t('export.col_province')];
+// หัวข้อพื้นฐาน (17 คอลัมน์แรก) — ที่อยู่ 2 ชุดแยกกัน: ทะเบียนบ้าน (J-M) + ภูมิลำเนา (N-Q)
+// หมายเหตุ: ลำดับคอลัมน์ของไฟล์ส่งออก ≠ เทมเพลตนำเข้า (ส่งออกรวมชื่อ-สกุล/มี last4+อายุ, นำเข้าต้องแยกช่อง)
+// ที่ต้องตรงกันคือ "ความหมาย" ของกลุ่มที่อยู่ — ห้ามให้คอลัมน์ที่อยู่ชุดเดียวปนทั้งทะเบียนบ้านและภูมิลำเนา
+// ช่องเดี่ยว (คอลัมน์ 1-9) — ผสานแนวตั้งครอบแถว 1-2
+$single_headers = [
+    t('export.col_no'), t('export.col_id_card'), t('export.col_id_last4'), t('export.col_fullname'),
+    t('export.col_gender'), t('export.col_age'), t('export.col_phone'), t('export.col_checkin'), t('export.col_checkout'),
+];
+// กลุ่มที่อยู่ 2 ชุด — คอลัมน์หลักแถว 1 (ผสานแนวนอน) + หัวย่อยแถว 2 · หัวย่อยชุดเดียวกันทั้งสองกลุ่ม
+$addr_subs   = [t('export.col_address'), t('export.col_tambon'), t('export.col_amphoe'), t('export.col_province')];
+$addr_groups = [t('export.grp_address'), t('export.grp_home')];
+
+$ADDR_START     = count($single_headers) + 1;                                    // = 10 (J)
+$BASE_COL_COUNT = count($single_headers) + count($addr_groups) * count($addr_subs); // = 17 (Q)
+$base_headers   = array_merge($single_headers, $addr_subs, $addr_subs);
 $v_names = array_column($v_master, 'v_name');
 $c_names = array_column($c_master, 'field_name');
 $all_headers = array_merge($base_headers, $v_names, $c_names);
@@ -103,23 +125,37 @@ $sheet->getColumnDimension('A')->setWidth(20, 'px');
 
 // --- 🎯 การจัดการ Merge Cells (แถวที่ 1 และ 2) ---
 
-// 1. ผสานคอลัมน์ 1-13 (ลำดับ ถึง จังหวัด) แนวตั้ง
-for ($i = 1; $i <= 13; $i++) {
+// 1. ช่องเดี่ยว — ผสานแนวตั้ง
+for ($i = 1; $i < $ADDR_START; $i++) {
     $colLetter = Coordinate::stringFromColumnIndex($i);
     $sheet->mergeCells("{$colLetter}1:{$colLetter}2");
     $sheet->setCellValue("{$colLetter}1", $all_headers[$i-1]);
     $sheet->getColumnDimension($colLetter)->setAutoSize(true);
 }
 
-// 2. ผสานคอลัมน์ 14 เป็นต้นไป แนวนอนในแถวที่ 1
-$startVCol = Coordinate::stringFromColumnIndex(14);
+// 1b. กลุ่มที่อยู่ — คอลัมน์หลักแถว 1 ผสานคลุม 4 ช่อง + หัวย่อยแถว 2
+$col = $ADDR_START;
+foreach ($addr_groups as $grpName) {
+    $grpStart = $col;
+    foreach ($addr_subs as $sub) {
+        $L = Coordinate::stringFromColumnIndex($col);
+        $sheet->setCellValue("{$L}2", $sub);
+        $sheet->getColumnDimension($L)->setAutoSize(true);
+        $col++;
+    }
+    $sheet->mergeCells(Coordinate::stringFromColumnIndex($grpStart) . '1:' . Coordinate::stringFromColumnIndex($col - 1) . '1');
+    $sheet->setCellValue(Coordinate::stringFromColumnIndex($grpStart) . '1', $grpName);
+}
+
+// 2. ผสานคอลัมน์กลุ่มพิเศษ (ถัดจากข้อมูลพื้นฐาน) แนวนอนในแถวที่ 1
+$startVCol = Coordinate::stringFromColumnIndex($BASE_COL_COUNT + 1);
 $lastColIdx = count($all_headers);
 $lastColStr = Coordinate::stringFromColumnIndex($lastColIdx);
 $sheet->mergeCells("{$startVCol}1:{$lastColStr}1");
 $sheet->setCellValue("{$startVCol}1", t('export.pdpa_section'));
 
-// 3. ใส่หัวข้อคอลัมน์ 14 เป็นต้นไป ในแถวที่ 2
-for ($i = 14; $i <= $lastColIdx; $i++) {
+// 3. ใส่หัวข้อคอลัมน์กลุ่มพิเศษ ในแถวที่ 2
+for ($i = $BASE_COL_COUNT + 1; $i <= $lastColIdx; $i++) {
     $colLetter = Coordinate::stringFromColumnIndex($i);
     $sheet->setCellValue($colLetter . '2', $all_headers[$i-1]);
     $sheet->getColumnDimension($colLetter)->setAutoSize(true);
@@ -152,16 +188,32 @@ foreach ($data as $i => $r) {
     $sheet->setCellValue('H' . $currentRow, $r['last_in'] ? date('d/m/Y', strtotime($r['last_in'])) : '-');
     $sheet->setCellValue('I' . $currentRow, $r['last_out'] ? date('d/m/Y', strtotime($r['last_out'])) : '-');
 
-    $tambon   = $r['lookup_tambon']   ?? $r['addr_tambon']   ?? '-';
-    $amphoe   = $r['lookup_amphoe']   ?? $r['addr_amphoe']   ?? '-';
-    $province = $r['lookup_province'] ?? $r['addr_province'] ?? '-';
+    // ที่อยู่ 2 ชุดแยกกัน — ไฟล์นี้เป็นทั้งรายงานและ "ไฟล์นำเข้ากลับ" จึงห้ามผสม/เดาประเภทที่อยู่
+    // J-M = ที่อยู่ตามทะเบียนบ้าน · N-Q = ภูมิลำเนา (เว้น '-' ถ้าไม่มีข้อมูล)
+    $reg = [
+        'number'   => $r['addr_number']     ?? '',
+        'tambon'   => $r['lookup_tambon']   ?? $r['addr_tambon']   ?? '',
+        'amphoe'   => $r['lookup_amphoe']   ?? $r['addr_amphoe']   ?? '',
+        'province' => $r['lookup_province'] ?? $r['addr_province'] ?? '',
+    ];
+    $home = [
+        'number'   => $r['home_addr_number'] ?? '',
+        'tambon'   => $r['home_tambon']      ?? '',
+        'amphoe'   => $r['home_amphoe']      ?? '',
+        'province' => $r['home_province']    ?? '',
+    ];
+    $cell = fn($v) => ($v !== null && trim((string)$v) !== '') ? $v : '-';
 
-    $sheet->setCellValue('J' . $currentRow, $r['addr_number'] ?? '-');
-    $sheet->setCellValue('K' . $currentRow, $tambon);
-    $sheet->setCellValue('L' . $currentRow, $amphoe);
-    $sheet->setCellValue('M' . $currentRow, $province);
+    $sheet->setCellValue('J' . $currentRow, $cell($reg['number']));
+    $sheet->setCellValue('K' . $currentRow, $cell($reg['tambon']));
+    $sheet->setCellValue('L' . $currentRow, $cell($reg['amphoe']));
+    $sheet->setCellValue('M' . $currentRow, $cell($reg['province']));
+    $sheet->setCellValue('N' . $currentRow, $cell($home['number']));
+    $sheet->setCellValue('O' . $currentRow, $cell($home['tambon']));
+    $sheet->setCellValue('P' . $currentRow, $cell($home['amphoe']));
+    $sheet->setCellValue('Q' . $currentRow, $cell($home['province']));
 
-    // ส่วนของ Vulnerable และ Custom Field (เริ่มที่คอลัมน์ที่ 14)
+    // ส่วนของ Vulnerable และ Custom Field (เริ่มถัดจากคอลัมน์ข้อมูลพื้นฐาน)
     $stmt_v = $pdo->prepare("SELECT v_id FROM citizen_vulnerable_map WHERE citizen_id = ?");
     $stmt_v->execute([$r['id']]);
     $active_v = $stmt_v->fetchAll(PDO::FETCH_COLUMN);
@@ -170,7 +222,7 @@ foreach ($data as $i => $r) {
     $stmt_c->execute([$r['id']]);
     $active_c = $stmt_c->fetchAll(PDO::FETCH_KEY_PAIR);
 
-    $colIdx = 14;
+    $colIdx = $BASE_COL_COUNT + 1;
     foreach ($v_master as $v) {
         $sheet->setCellValue(Coordinate::stringFromColumnIndex($colIdx) . $currentRow, in_array($v['id'], $active_v) ? '✔' : '');
         $colIdx++;
