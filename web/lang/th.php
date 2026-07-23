@@ -61,7 +61,7 @@ return [
     'common.items_unit' => 'รายการ',
 
     /* ===== หน้ารายชื่อบุคคล (guest_list) ===== */
-    'list.title'              => 'รายชื่อบุคคล (Citizens)',
+    'list.title'              => 'ทะเบียนบุคคล',
     'list.register_new'       => 'ลงทะเบียนใหม่',
     'list.search_label'       => 'คำค้นหา (ชื่อ, สกุล, ที่อยู่, เลขท้ายบัตร)',
     'list.search_placeholder' => 'พิมพ์ข้อมูลที่ต้องการค้นหา...',
