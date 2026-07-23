@@ -63,6 +63,7 @@ if (!$backup_failed) {
         'display_key (จอยินยอม/QR)'      => fn() => migDisplayKey($pdo, true),
         'pdpa_enabled (สวิตช์ PDPA)'      => fn() => migPdpaToggle($pdo, true),
         'site_url + qr_ip'               => fn() => migSiteUrl($pdo, true),
+        'ภูมิลำเนา (citizens.home_*)'      => fn() => migHomeAddress($pdo, true),
         'P5+P6 (re-encrypt GCM)'         => fn() => migP5P6Reencrypt($pdo, true),
     ] as $label => $fn) {
         try {

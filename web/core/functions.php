@@ -184,6 +184,49 @@ function stripAddrPrefix($s): string {
 }
 
 /**
+ * หา address_id จาก "ชื่อ" ตำบล/อำเภอ/จังหวัด — ตรรกะกลางของทั้งระบบ
+ * (เดิมมี 3 ชุดไม่เท่ากันที่ guest_check / guest_import / api/address_id.php —
+ *  ชุดของ import ไม่ตัด "แขวง/เขต" ทำให้ที่อยู่ กทม. จากไฟล์หา id ไม่เจอ)
+ * ใช้ stripAddrPrefix เป็นตัวล้างคำนำหน้าตัวเดียวกันหมด แล้วค้นแบบ LIKE (หลวม ๆ กันพิมพ์ไม่ตรงเป๊ะ)
+ *
+ * @return int|null null = หาไม่เจอ (ผู้เรียกตัดสินใจเองว่าจะข้ามหรือเก็บเป็นข้อความ)
+ */
+function lookupAddressIdByName(PDO $pdo, ?string $tambon, ?string $amphoe, ?string $province): ?int
+{
+    $t = stripAddrPrefix($tambon);
+    $a = stripAddrPrefix($amphoe);
+    $p = stripAddrPrefix($province);
+    if ($t === '' && $a === '' && $p === '') return null;
+
+    $stmt = $pdo->prepare(
+        "SELECT id FROM address_lookup
+         WHERE subdistrict LIKE ? AND district LIKE ? AND province LIKE ? LIMIT 1"
+    );
+    $stmt->execute(["%$t%", "%$a%", "%$p%"]);
+    $id = $stmt->fetchColumn();
+    return $id !== false ? (int)$id : null;
+}
+
+/**
+ * เลือกชุดที่อยู่ที่จะ "แสดงผล": ภูมิลำเนา (กล่อง 3) ก่อน — ถ้าไม่มีข้อมูลเลยค่อยใช้ที่อยู่ตามทะเบียนบ้าน
+ * ใช้ร่วมกันที่ guest_list / guest_history / export_excel เพื่อให้ทุกหน้าตอบเหมือนกัน
+ *
+ * @param array $home ชุดภูมิลำเนา เช่น ['number'=>..,'tambon'=>..,'amphoe'=>..,'province'=>..,'zipcode'=>..]
+ * @param array $reg  ชุดที่อยู่ตามทะเบียนบ้าน (คีย์เดียวกัน)
+ * @return array ชุดที่เลือก + 'is_home' บอกว่าใช้ภูมิลำเนาหรือไม่
+ */
+function pickDisplayAddress(array $home, array $reg): array
+{
+    $hasHome = false;
+    foreach ($home as $v) {
+        if (trim((string)$v) !== '') { $hasHome = true; break; }
+    }
+    $picked = $hasHome ? $home : $reg;
+    $picked['is_home'] = $hasHome;
+    return $picked;
+}
+
+/**
  * กุญแจประจำจอยินยอม (display key) ของเจ้าหน้าที่ 1 คน — ฝังใน QR (`guest_display.php?d=...`)
  * ทำไมต้องมี: หลัง S5 ปิดโหมด broadcast แล้ว อุปกรณ์ผู้พัก (ไม่ได้ล็อกอิน) ไม่มีทางได้ sync_token
  * มาก่อน จึง poll ไม่ได้เลย — display key คือ capability ที่ "ต้องรู้ค่าถึงเรียกได้" ใช้บูตสแตรป

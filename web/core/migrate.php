@@ -167,6 +167,37 @@ function migSiteUrl(PDO $pdo, bool $apply = true): string
 }
 
 /**
+ * ภูมิลำเนา (กล่อง 3 ในหน้าเพิ่มข้อมูล) — เก็บเป็นเลข address_id เหมือนที่อยู่ตามทะเบียนบ้าน
+ * home_same_as_reg = 1 (ค่าเริ่มต้น) แปลว่าใช้ที่อยู่ตามทะเบียนบ้าน → home_* เป็น NULL
+ * idempotent: เพิ่มเฉพาะคอลัมน์ที่ยังไม่มี · แถวเดิมได้ค่าเริ่มต้น 1 = พฤติกรรมเดิม (ภูมิลำเนา = ที่อยู่ทะเบียนบ้าน)
+ */
+function migHomeAddress(PDO $pdo, bool $apply = true): string
+{
+    $cols = $pdo->query(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'citizens'
+           AND COLUMN_NAME IN ('home_same_as_reg', 'home_address_id', 'home_addr_number')"
+    )->fetchAll(PDO::FETCH_COLUMN);
+
+    $todo = [];
+    if (!in_array('home_same_as_reg', $cols, true)) {
+        $todo[] = "ADD COLUMN home_same_as_reg TINYINT(1) NOT NULL DEFAULT 1 AFTER addr_zipcode";
+    }
+    if (!in_array('home_address_id', $cols, true)) {
+        $todo[] = "ADD COLUMN home_address_id INT DEFAULT NULL AFTER home_same_as_reg";
+    }
+    if (!in_array('home_addr_number', $cols, true)) {
+        $todo[] = "ADD COLUMN home_addr_number VARCHAR(50) DEFAULT NULL AFTER home_address_id";
+    }
+
+    if (!$todo) return "ภูมิลำเนา: มีคอลัมน์ home_* ครบแล้ว";
+    if (!$apply) return "ภูมิลำเนา: (dry-run) จะเพิ่ม " . implode(', ', $todo);
+
+    $pdo->exec("ALTER TABLE citizens " . implode(', ', $todo));
+    return "ภูมิลำเนา: เพิ่มคอลัมน์ citizens.home_* แล้ว (" . count($todo) . ")";
+}
+
+/**
  * P5+P6 — re-hash id_card_hash (domain-separated) + re-encrypt PII เป็น GCM
  * idempotent + integrity check ด้วย id_card_last4 (กันเขียนทับข้อมูลดีด้วยขยะถ้า key เพี้ยน)
  */

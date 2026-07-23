@@ -28,20 +28,23 @@ $province = stripAddrPrefix($raw_province);
 try {
     // พยายามหาจากรหัสก่อน (ถ้าส่งมา)
     if ($district_code !== '') {
-        $stmt = $pdo->prepare("SELECT id FROM address_lookup WHERE district_code = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT id, zipcode FROM address_lookup WHERE district_code = ? LIMIT 1");
         $stmt->execute([$district_code]);
-        if ($id = $stmt->fetchColumn()) {
-            echo json_encode(['status' => 'success', 'address_id' => $id]);
+        if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            echo json_encode(['status' => 'success', 'address_id' => $row['id'], 'zipcode' => $row['zipcode']]);
             exit;
         }
     }
 
-    // ถ้าไม่เจอ ให้หาจากชื่อ (ใช้ LIKE %...% เพื่อลดความเป๊ะเกินไป)
-    $stmt = $pdo->prepare("SELECT id FROM address_lookup WHERE subdistrict LIKE ? AND district LIKE ? AND province LIKE ? LIMIT 1");
-    $stmt->execute(["%$district%", "%$amphoe%", "%$province%"]);
-    $id = $stmt->fetchColumn();
-
-    echo json_encode($id ? ['status' => 'success', 'address_id' => $id] : ['status' => 'not_found']);
+    // ถ้าไม่เจอ ให้หาจากชื่อ — ใช้ helper กลาง (ชุดเดียวกับ guest_check/guest_import)
+    $id = lookupAddressIdByName($pdo, $district, $amphoe, $province);
+    if ($id === null) {
+        echo json_encode(['status' => 'not_found']);
+        exit;
+    }
+    $stmt = $pdo->prepare("SELECT zipcode FROM address_lookup WHERE id = ?");
+    $stmt->execute([$id]);
+    echo json_encode(['status' => 'success', 'address_id' => $id, 'zipcode' => $stmt->fetchColumn()]);
 } catch (PDOException $e) {
     http_response_code(500);
     echo json_encode([
