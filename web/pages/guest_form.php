@@ -60,6 +60,14 @@ if ($id > 0) {
             $photo_show = $citizen['photo_path'];
         }
 
+        // การเข้าพักที่ยัง Active — check_in/location_type อยู่ที่ stay_history ไม่ใช่ citizens
+        // ต้องดึงกลับมาโชว์ตอนแก้ไข ไม่งั้น dropdown เด้งเป็น "พักในศูนย์" และวันเข้าพักกลายเป็นวันนี้เสมอ
+        $stmt_stay = $pdo->prepare("SELECT check_in, location_type FROM stay_history WHERE citizen_id = ? AND status = 'Active' ORDER BY id DESC LIMIT 1");
+        $stmt_stay->execute([$id]);
+        $stay = $stmt_stay->fetch() ?: [];
+        $citizen['location_type'] = $stay['location_type'] ?? '';
+        $citizen['check_in']      = $stay['check_in'] ?? '';
+
         // Fetch selected vulnerable mapping
         $stmt_map = $pdo->prepare("SELECT v_id FROM citizen_vulnerable_map WHERE citizen_id = ?");
         $stmt_map->execute([$id]);
@@ -295,9 +303,10 @@ if ($id > 0) {
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-bold small"><?php echo e('form.place_type'); ?></label>
+                            <?php $loc_now = $citizen['location_type'] ?? ''; ?>
                             <select name="location_type" class="form-select">
-                                <option value="Inside"><?php echo e('form.place_inside'); ?></option>
-                                <option value="Outside"><?php echo e('form.place_outside'); ?></option>
+                                <option value="Inside" <?php echo ($loc_now === 'Inside' || $loc_now === '') ? 'selected' : ''; ?>><?php echo e('form.place_inside'); ?></option>
+                                <option value="Outside" <?php echo ($loc_now === 'Outside') ? 'selected' : ''; ?>><?php echo e('form.place_outside'); ?></option>
                             </select>
                         </div>
                         <div class="col-12 border-top pt-3">
@@ -500,10 +509,10 @@ $(document).ready(function() {
         initThaiDate(el, opts);
     });
 
-    // เช็คอิน: วันที่+เวลา แสดงเป็น พ.ศ. — ค่าเริ่มต้น = ตอนนี้
+    // เช็คอิน: วันที่+เวลา แสดงเป็น พ.ศ. — แก้ไข = วันเข้าพักเดิม, เพิ่มใหม่ = ตอนนี้
     initThaiDate("#check_in_date", {
         enableTime: true, time_24hr: true, dateFormat: "Y-m-d H:i",
-        defaultDate: new Date(), altFormat: "THAITIME"
+        defaultDate: <?= !empty($citizen['check_in']) ? json_encode(substr((string)$citizen['check_in'], 0, 16)) : 'new Date()' ?>, altFormat: "THAITIME"
     });
 });
 

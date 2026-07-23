@@ -184,20 +184,31 @@ if ($age >= 60 && !in_array(2, $post_data['vulnerable'])) {
         }
 
         // --- 🏢 เพิ่มส่วนการเข้าพัก (Stay History) ---
-        $stmt_stay = $pdo->prepare("SELECT id FROM stay_history WHERE citizen_id = ? AND status = 'Active'");
+        $stmt_stay = $pdo->prepare("SELECT id FROM stay_history WHERE citizen_id = ? AND status = 'Active' ORDER BY id DESC LIMIT 1");
         $stmt_stay->execute([$citizen_id]);
-        
-        if (!$stmt_stay->fetch()) {
+        $active_stay_id = $stmt_stay->fetchColumn();
+
+        $location_type = ($post_data['location_type'] ?? '') === 'Outside' ? 'Outside' : 'Inside';
+        // ฟอร์มถูกเปิดมาแบบ "แก้ไข" หรือไม่ (hidden field action จาก guest_form — ผ่านหน้าเปรียบเทียบมาด้วย)
+        $is_edit = ($post_data['action'] ?? '') === 'update';
+
+        if (!$active_stay_id) {
             $check_in_date = $post_data['check_in_date'] ?? date('Y-m-d H:i:s');
-            $location_type = $post_data['location_type'] ?? 'Inside';
             $admin_id = $_SESSION['user_id'] ?? 0;
 
-            $sql_stay = "INSERT INTO stay_history (citizen_id, check_in, location_type, status, admin_id) 
+            $sql_stay = "INSERT INTO stay_history (citizen_id, check_in, location_type, status, admin_id)
                          VALUES (?, ?, ?, 'Active', ?)";
             $pdo->prepare($sql_stay)->execute([$citizen_id, $check_in_date, $location_type, $admin_id]);
-            
+
             writeLog($pdo, 'CHECK_IN', "เช็คอินบุคคล ID: $citizen_id ผ่านการอ่านบัตร");
+        } elseif ($is_edit) {
+            // กำลังพักอยู่ + เปิดมาจากปุ่มแก้ไข → อัปเดตประเภทที่พักตามที่เลือก
+            // ไม่แตะ check_in เดิม เพื่อคงวันเข้าพักจริงไว้
+            $pdo->prepare("UPDATE stay_history SET location_type = ? WHERE id = ?")
+                ->execute([$location_type, $active_stay_id]);
         }
+        // กำลังพักอยู่ แต่มาจากฟอร์ม "เพิ่มข้อมูล" (ลงทะเบียนซ้ำ/อ่านบัตรใหม่) → คงประเภทที่พักเดิมไว้
+        // เพราะ dropdown ในฟอร์มเปล่าเป็นค่าเริ่มต้น "พักในศูนย์" ไม่ใช่เจตนาของเจ้าหน้าที่
 
         return $citizen_id;
         }); // จบ runInTransaction (commit อัตโนมัติเมื่อสำเร็จ)
