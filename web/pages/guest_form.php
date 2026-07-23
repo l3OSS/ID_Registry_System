@@ -389,8 +389,11 @@ $(document).ready(function() {
         const cleanT = stripAddrPrefix(t);
         const cleanA = stripAddrPrefix(a);
         const cleanP = stripAddrPrefix(p);
+        // ส่งรหัสไปรษณีย์ของกล่องนั้น ๆ ไปช่วยเลือกแถว — ตำบลชื่อซ้ำที่แยกตามเขตไปรษณีย์จะได้ไม่ได้แถวแรกเสมอ
+        const cleanZ = String($(zipField).val() || '').replace(/\D/g, '');
 
-        const url = `api/address_id.php?district=${encodeURIComponent(cleanT)}&amphoe=${encodeURIComponent(cleanA)}&province=${encodeURIComponent(cleanP)}`;
+        const url = `api/address_id.php?district=${encodeURIComponent(cleanT)}&amphoe=${encodeURIComponent(cleanA)}&province=${encodeURIComponent(cleanP)}`
+                  + (cleanZ ? `&zipcode=${encodeURIComponent(cleanZ)}` : '');
 
         fetch(url)
             .then(res => res.json())

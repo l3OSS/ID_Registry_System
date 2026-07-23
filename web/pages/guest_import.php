@@ -15,7 +15,7 @@
  *
  * เทมเพลตหัวตาราง 2 แถว (main/sub) ให้เข้าคู่กับไฟล์ส่งออก:
  *   ช่องเดี่ยว (ผสานแนวตั้ง): ลำดับ, เลขบัตร, คำนำหน้า, ชื่อ, นามสกุล, เพศ, วันเกิด, เบอร์โทร, ประเภทที่พัก, วันเข้าพัก
- *   กลุ่ม "ที่อยู่": ที่อยู่, ตำบล, อำเภอ, จังหวัด
+ *   กลุ่ม "ที่อยู่ตามทะเบียนบ้าน" และ "ที่อยู่ตามภูมิลำเนา": ที่อยู่, ตำบล, อำเภอ, จังหวัด, รหัสไปรษณีย์
  *   กลุ่ม "สถานะกลุ่มพิเศษ": เช็คบ็อกกลุ่มเปราะบาง (vulnerable_master) + แท็กข้อความฟิลด์พิเศษ (custom_field_master)
  */
 
@@ -38,18 +38,20 @@ $FIXED_FIELDS = [
     7  => 'phone',
     8  => 'location_type',
     9  => 'check_in',
-    // กลุ่ม "ที่อยู่ตามทะเบียนบ้าน"
+    // กลุ่ม "ที่อยู่ตามทะเบียนบ้าน" · รหัสไปรษณีย์ใช้ช่วยเลือกแถวใน address_lookup (ตำบลชื่อซ้ำแยกตามเขตไปรษณีย์)
     10 => 'addr_number',
     11 => 'addr_tambon',
     12 => 'addr_amphoe',
     13 => 'addr_province',
+    14 => 'addr_zipcode',
     // กลุ่ม "ภูมิลำเนา" — เว้นว่างได้ทั้งชุด = ไม่มีข้อมูลภูมิลำเนา (ระบบจะ fallback ไปที่อยู่ตามทะเบียนบ้านตอนแสดงผล)
-    14 => 'home_addr_number',
-    15 => 'home_addr_tambon',
-    16 => 'home_addr_amphoe',
-    17 => 'home_addr_province',
+    15 => 'home_addr_number',
+    16 => 'home_addr_tambon',
+    17 => 'home_addr_amphoe',
+    18 => 'home_addr_province',
+    19 => 'home_addr_zipcode',
 ];
-$FIRST_SPECIAL_IDX = 18;   // ตำแหน่งเริ่มของกลุ่ม "สถานะกลุ่มพิเศษ" (vulnerable + custom)
+$FIRST_SPECIAL_IDX = 20;   // ตำแหน่งเริ่มของกลุ่ม "สถานะกลุ่มพิเศษ" (vulnerable + custom)
 
 // master ของกลุ่มพิเศษ — ลำดับตรงกับ export_excel (ORDER BY id ASC) เพื่อจับคู่ตามตำแหน่งได้
 $V_MASTER = $pdo->query("SELECT id, v_name FROM vulnerable_master ORDER BY id ASC")->fetchAll();
@@ -90,8 +92,8 @@ function imp_isChecked(string $s): bool {
 }
 
 /** ค้นหา address_id จากชื่อ ตำบล/อำเภอ/จังหวัด — ตรรกะจริงอยู่ที่ core/functions.php (ชุดเดียวกับฟอร์ม/API) */
-function imp_lookupAddressId(PDO $pdo, string $tambon, string $amphoe, string $province): ?int {
-    return lookupAddressIdByName($pdo, $tambon, $amphoe, $province);
+function imp_lookupAddressId(PDO $pdo, string $tambon, string $amphoe, string $province, ?string $zipcode = null): ?int {
+    return lookupAddressIdByName($pdo, $tambon, $amphoe, $province, $zipcode);
 }
 
 /**
@@ -104,13 +106,14 @@ function imp_readHome(PDO $pdo, array $d): array {
     $t   = trim((string)($d['home_addr_tambon']   ?? ''));
     $a   = trim((string)($d['home_addr_amphoe']   ?? ''));
     $p   = trim((string)($d['home_addr_province'] ?? ''));
+    $z   = trim((string)($d['home_addr_zipcode']  ?? ''));
 
-    if ($num === '' && $t === '' && $a === '' && $p === '') {
+    if ($num === '' && $t === '' && $a === '' && $p === '' && $z === '') {
         return ['same' => 0, 'address_id' => null, 'number' => null, 'has' => false];
     }
     return [
         'same'       => 0,
-        'address_id' => imp_lookupAddressId($pdo, $t, $a, $p),
+        'address_id' => imp_lookupAddressId($pdo, $t, $a, $p, $z !== '' ? $z : null),
         'number'     => $num !== '' ? $num : null,
         'has'        => true,
     ];
@@ -184,9 +187,10 @@ function imp_buildReopenEntry(array $old, array $d, array $special, int $rowNum)
         'prefix' => $d['prefix'], 'firstname' => $d['firstname'], 'lastname' => $d['lastname'],
         'gender' => imp_mapGender($d['gender']), 'birthdate' => imp_normalizeDate($d['birthdate']),
         'addr_number' => $d['addr_number'], 'addr_tambon' => $d['addr_tambon'],
-        'addr_amphoe' => $d['addr_amphoe'], 'addr_province' => $d['addr_province'],
+        'addr_amphoe' => $d['addr_amphoe'], 'addr_province' => $d['addr_province'], 'addr_zipcode' => $d['addr_zipcode'],
         'home_addr_number' => $d['home_addr_number'], 'home_addr_tambon' => $d['home_addr_tambon'],
         'home_addr_amphoe' => $d['home_addr_amphoe'], 'home_addr_province' => $d['home_addr_province'],
+        'home_addr_zipcode' => $d['home_addr_zipcode'],
         'phone' => $d['phone'],
         'special' => $special,
     ];
@@ -226,7 +230,7 @@ function imp_applyNewData(PDO $pdo, int $cid, array $n): bool {
         $put('birthdate', $n['birthdate']);
         $put('addr_number', $n['addr_number']); $put('addr_tambon', $n['addr_tambon']);
         $put('addr_amphoe', $n['addr_amphoe']); $put('addr_province', $n['addr_province']);
-        $address_id = imp_lookupAddressId($pdo, $n['addr_tambon'], $n['addr_amphoe'], $n['addr_province']);
+        $address_id = imp_lookupAddressId($pdo, $n['addr_tambon'], $n['addr_amphoe'], $n['addr_province'], $n['addr_zipcode'] ?? null);
         if ($address_id !== null) { $sets[] = "address_id = ?"; $vals[] = $address_id; }
         // ภูมิลำเนา: เขียนทับทั้งชุดเมื่อไฟล์มีข้อมูลมา (ไม่งั้นปล่อยของเดิมไว้)
         $home = imp_readHome($pdo, $n);
@@ -358,7 +362,7 @@ function imp_process(PDO $pdo, array $file, array $fixed, int $firstSpecialIdx, 
         try {
             $pdo->beginTransaction();
             $public_id  = generatePublicId($pdo);
-            $address_id = imp_lookupAddressId($pdo, $d['addr_tambon'], $d['addr_amphoe'], $d['addr_province']);
+            $address_id = imp_lookupAddressId($pdo, $d['addr_tambon'], $d['addr_amphoe'], $d['addr_province'], $d['addr_zipcode'] ?? null);
             $home       = imp_readHome($pdo, $d);
 
             $ins = $pdo->prepare(
@@ -423,7 +427,7 @@ if (($_GET['download'] ?? '') === 'template') {
         t('imp.col_location'), t('imp.col_checkin'),
     ];
     // กลุ่มที่อยู่ 2 ชุด (ทะเบียนบ้าน + ภูมิลำเนา) — หัวย่อยเหมือนกัน ต่างกันที่ชื่อกลุ่มแถวบน
-    $addrSubs   = [t('imp.col_addr_number'), t('imp.col_tambon'), t('imp.col_amphoe'), t('imp.col_province')];
+    $addrSubs   = [t('imp.col_addr_number'), t('imp.col_tambon'), t('imp.col_amphoe'), t('imp.col_province'), t('imp.col_zipcode')];
     $addrGroups = [t('imp.grp_address'), t('imp.grp_home')];
 
     // 1) ช่องเดี่ยว — ผสานแนวตั้ง (แถว 1-2)

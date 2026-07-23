@@ -45,8 +45,8 @@ function processCheckInDate($input_date) {
 /**
  * ค้นหา ID ที่อยู่จากฐานข้อมูล Master — ตรรกะจริงอยู่ที่ core/functions.php (ใช้ร่วมกับ guest_import/api)
  */
-function lookupAddressId($pdo, $tambon, $amphoe, $province) {
-    return lookupAddressIdByName($pdo, $tambon, $amphoe, $province);
+function lookupAddressId($pdo, $tambon, $amphoe, $province, $zipcode = null) {
+    return lookupAddressIdByName($pdo, $tambon, $amphoe, $province, $zipcode);
 }
 
 /**
@@ -92,7 +92,7 @@ function saveCitizenAndStay($pdo, $post_data, $old_data = null, $decision = null
         $address_id = !empty($post_data['address_id']) ? intval($post_data['address_id']) : null;
         // Fail-safe: ถ้า ID เป็นค่าว่าง ให้หาจากชื่อตำบล/อำเภอ/จังหวัด
 if (!$address_id && !empty($post_data['addr_tambon'])) {
-    $address_id = lookupAddressId($pdo, $post_data['addr_tambon'], $post_data['addr_amphoe'], $post_data['addr_province']);
+    $address_id = lookupAddressId($pdo, $post_data['addr_tambon'], $post_data['addr_amphoe'], $post_data['addr_province'], $post_data['addr_zipcode'] ?? null);
 }
 
         // ภูมิลำเนา (กล่อง 3) — สวิตช์เปิด = ใช้ที่อยู่ตามทะเบียนบ้าน จึงเก็บแค่ธง ไม่เก็บซ้ำ (กันข้อมูลสองชุดเพี้ยนกัน)
@@ -102,7 +102,7 @@ if (!$address_id && !empty($post_data['addr_tambon'])) {
         if (!$home_same) {
             $home_address_id = !empty($post_data['home_address_id']) ? intval($post_data['home_address_id']) : null;
             if (!$home_address_id && !empty($post_data['home_addr_tambon'])) {
-                $home_address_id = lookupAddressId($pdo, $post_data['home_addr_tambon'], $post_data['home_addr_amphoe'] ?? '', $post_data['home_addr_province'] ?? '');
+                $home_address_id = lookupAddressId($pdo, $post_data['home_addr_tambon'], $post_data['home_addr_amphoe'] ?? '', $post_data['home_addr_province'] ?? '', $post_data['home_addr_zipcode'] ?? null);
             }
             $home_addr_number = ($post_data['home_addr_number'] ?? '') !== '' ? $post_data['home_addr_number'] : null;
         }

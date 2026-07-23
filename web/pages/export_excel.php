@@ -68,9 +68,11 @@ $sql = "SELECT c.*,
             al.subdistrict AS lookup_tambon, 
             al.district AS lookup_amphoe, 
             al.province AS lookup_province,
+            al.zipcode AS lookup_zipcode,
             hl.subdistrict AS home_tambon,
             hl.district AS home_amphoe,
             hl.province AS home_province,
+            hl.zipcode AS home_zipcode,
             sh.check_in as last_in,
             CASE WHEN sh.status = 'Active' THEN NULL ELSE sh.check_out END as last_out
             FROM citizens c
@@ -101,7 +103,7 @@ $sheet->setTitle('ResidentReport');
 
 $spreadsheet->getDefaultStyle()->getFont()->setName('Sarabun')->setSize(14);
 
-// หัวข้อพื้นฐาน (17 คอลัมน์แรก) — ที่อยู่ 2 ชุดแยกกัน: ทะเบียนบ้าน (J-M) + ภูมิลำเนา (N-Q)
+// หัวข้อพื้นฐาน (19 คอลัมน์แรก) — ที่อยู่ 2 ชุดแยกกัน: ทะเบียนบ้าน (J-N) + ภูมิลำเนา (O-S) ชุดละ 5 ช่อง
 // หมายเหตุ: ลำดับคอลัมน์ของไฟล์ส่งออก ≠ เทมเพลตนำเข้า (ส่งออกรวมชื่อ-สกุล/มี last4+อายุ, นำเข้าต้องแยกช่อง)
 // ที่ต้องตรงกันคือ "ความหมาย" ของกลุ่มที่อยู่ — ห้ามให้คอลัมน์ที่อยู่ชุดเดียวปนทั้งทะเบียนบ้านและภูมิลำเนา
 // ช่องเดี่ยว (คอลัมน์ 1-9) — ผสานแนวตั้งครอบแถว 1-2
@@ -110,11 +112,11 @@ $single_headers = [
     t('export.col_gender'), t('export.col_age'), t('export.col_phone'), t('export.col_checkin'), t('export.col_checkout'),
 ];
 // กลุ่มที่อยู่ 2 ชุด — คอลัมน์หลักแถว 1 (ผสานแนวนอน) + หัวย่อยแถว 2 · หัวย่อยชุดเดียวกันทั้งสองกลุ่ม
-$addr_subs   = [t('export.col_address'), t('export.col_tambon'), t('export.col_amphoe'), t('export.col_province')];
+$addr_subs   = [t('export.col_address'), t('export.col_tambon'), t('export.col_amphoe'), t('export.col_province'), t('export.col_zipcode')];
 $addr_groups = [t('export.grp_address'), t('export.grp_home')];
 
 $ADDR_START     = count($single_headers) + 1;                                    // = 10 (J)
-$BASE_COL_COUNT = count($single_headers) + count($addr_groups) * count($addr_subs); // = 17 (Q)
+$BASE_COL_COUNT = count($single_headers) + count($addr_groups) * count($addr_subs); // = 19 (S)
 $base_headers   = array_merge($single_headers, $addr_subs, $addr_subs);
 $v_names = array_column($v_master, 'v_name');
 $c_names = array_column($c_master, 'field_name');
@@ -133,7 +135,7 @@ for ($i = 1; $i < $ADDR_START; $i++) {
     $sheet->getColumnDimension($colLetter)->setAutoSize(true);
 }
 
-// 1b. กลุ่มที่อยู่ — คอลัมน์หลักแถว 1 ผสานคลุม 4 ช่อง + หัวย่อยแถว 2
+// 1b. กลุ่มที่อยู่ — คอลัมน์หลักแถว 1 ผสานคลุมชุดละ 5 ช่อง + หัวย่อยแถว 2
 $col = $ADDR_START;
 foreach ($addr_groups as $grpName) {
     $grpStart = $col;
@@ -195,23 +197,29 @@ foreach ($data as $i => $r) {
         'tambon'   => $r['lookup_tambon']   ?? $r['addr_tambon']   ?? '',
         'amphoe'   => $r['lookup_amphoe']   ?? $r['addr_amphoe']   ?? '',
         'province' => $r['lookup_province'] ?? $r['addr_province'] ?? '',
+        'zipcode'  => $r['lookup_zipcode']  ?? $r['addr_zipcode']  ?? '',
     ];
     $home = [
         'number'   => $r['home_addr_number'] ?? '',
         'tambon'   => $r['home_tambon']      ?? '',
         'amphoe'   => $r['home_amphoe']      ?? '',
         'province' => $r['home_province']    ?? '',
+        'zipcode'  => $r['home_zipcode']     ?? '',
     ];
     $cell = fn($v) => ($v !== null && trim((string)$v) !== '') ? $v : '-';
 
-    $sheet->setCellValue('J' . $currentRow, $cell($reg['number']));
-    $sheet->setCellValue('K' . $currentRow, $cell($reg['tambon']));
-    $sheet->setCellValue('L' . $currentRow, $cell($reg['amphoe']));
-    $sheet->setCellValue('M' . $currentRow, $cell($reg['province']));
-    $sheet->setCellValue('N' . $currentRow, $cell($home['number']));
-    $sheet->setCellValue('O' . $currentRow, $cell($home['tambon']));
-    $sheet->setCellValue('P' . $currentRow, $cell($home['amphoe']));
-    $sheet->setCellValue('Q' . $currentRow, $cell($home['province']));
+    // เขียนทีละกลุ่มตามลำดับหัวตาราง (ที่อยู่/ตำบล/อำเภอ/จังหวัด/รหัสไปรษณีย์ × 2 ชุด)
+    $colIdx = $ADDR_START;
+    foreach ([$reg, $home] as $set) {
+        foreach (['number', 'tambon', 'amphoe', 'province', 'zipcode'] as $part) {
+            $sheet->setCellValueExplicit(
+                Coordinate::stringFromColumnIndex($colIdx) . $currentRow,
+                (string)$cell($set[$part]),
+                DataType::TYPE_STRING     // รหัสไปรษณีย์ต้องคงเลข 0 นำหน้า (เช่น 10110) ไม่ให้ Excel ตัดทิ้ง
+            );
+            $colIdx++;
+        }
+    }
 
     // ส่วนของ Vulnerable และ Custom Field (เริ่มถัดจากคอลัมน์ข้อมูลพื้นฐาน)
     $stmt_v = $pdo->prepare("SELECT v_id FROM citizen_vulnerable_map WHERE citizen_id = ?");

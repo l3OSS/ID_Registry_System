@@ -448,6 +448,7 @@ return [
     'export.col_tambon'    => 'ตำบล',
     'export.col_amphoe'    => 'อำเภอ',
     'export.col_province'  => 'จังหวัด',
+    'export.col_zipcode'   => 'รหัสไปรษณีย์',
     'export.pdpa_section'  => 'รายงานข้อมูลกลุ่มเปราะบางและฟิลด์พิเศษ (PDPA)',
 
     /* ===== API (sync_*) — ข้อความ JSON ที่ผู้ใช้เห็น ===== */
@@ -495,6 +496,7 @@ return [
     'imp.col_tambon'       => 'ตำบล',
     'imp.col_amphoe'       => 'อำเภอ',
     'imp.col_province'     => 'จังหวัด',
+    'imp.col_zipcode'      => 'รหัสไปรษณีย์',
 
     'imp.report_title'     => 'ผลการนำเข้า',
     'imp.report_total'     => 'อ่านทั้งหมด :n แถว',
