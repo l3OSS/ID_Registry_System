@@ -37,7 +37,9 @@ try {
     }
 
     // ถ้าไม่เจอ ให้หาจากชื่อ — ใช้ helper กลาง (ชุดเดียวกับ guest_check/guest_import)
-    $id = lookupAddressIdByName($pdo, $district, $amphoe, $province);
+    // ส่งรหัสไปรษณีย์ไปด้วยถ้ามี เพื่อเลือกแถวให้ตรงในตำบลที่ชื่อซ้ำแต่แยกตามเขตไปรษณีย์
+    $zipcode = trim($_GET['zipcode'] ?? '');
+    $id = lookupAddressIdByName($pdo, $district, $amphoe, $province, $zipcode !== '' ? $zipcode : null);
     if ($id === null) {
         echo json_encode(['status' => 'not_found']);
         exit;

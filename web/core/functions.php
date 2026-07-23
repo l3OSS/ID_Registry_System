@@ -191,13 +191,30 @@ function stripAddrPrefix($s): string {
  *
  * @return int|null null = หาไม่เจอ (ผู้เรียกตัดสินใจเองว่าจะข้ามหรือเก็บเป็นข้อความ)
  */
-function lookupAddressIdByName(PDO $pdo, ?string $tambon, ?string $amphoe, ?string $province): ?int
+function lookupAddressIdByName(PDO $pdo, ?string $tambon, ?string $amphoe, ?string $province, ?string $zipcode = null): ?int
 {
     $t = stripAddrPrefix($tambon);
     $a = stripAddrPrefix($amphoe);
     $p = stripAddrPrefix($province);
     if ($t === '' && $a === '' && $p === '') return null;
 
+    // รหัสไปรษณีย์ (ถ้าส่งมา) ใช้เลือกแถวให้ตรง — บางตำบลชื่อซ้ำกันเป๊ะแต่แยกแถวตามเขตไปรษณีย์
+    // เช่น วังใหม่/ปทุมวัน มี 5 แถว (10330/10110/10120/10400/10500) ถ้าไม่ดูรหัสจะได้แถวแรกเสมอ
+    $z = preg_replace('/\D/', '', (string)$zipcode);
+
+    if ($t !== '' && $a !== '' && $p !== '') {
+        if ($z !== '') {
+            $stmt = $pdo->prepare("SELECT id FROM address_lookup WHERE subdistrict = ? AND district = ? AND province = ? AND zipcode = ? LIMIT 1");
+            $stmt->execute([$t, $a, $p, $z]);
+            if ($id = $stmt->fetchColumn()) return (int)$id;
+        }
+        // ค้นแบบตรงตัวก่อน — LIKE '%เวียง%' ไปโดน "รอบเวียง" ก่อนแล้ว LIMIT 1 คว้าแถวผิด (วัดจริง 9 ตำบลทั้งประเทศ)
+        $stmt = $pdo->prepare("SELECT id FROM address_lookup WHERE subdistrict = ? AND district = ? AND province = ? LIMIT 1");
+        $stmt->execute([$t, $a, $p]);
+        if ($id = $stmt->fetchColumn()) return (int)$id;
+    }
+
+    // ไม่เป๊ะ (พิมพ์ไม่ครบ/สะกดต่าง) → ค่อยผ่อนเป็น LIKE แบบเดิม
     $stmt = $pdo->prepare(
         "SELECT id FROM address_lookup
          WHERE subdistrict LIKE ? AND district LIKE ? AND province LIKE ? LIMIT 1"
