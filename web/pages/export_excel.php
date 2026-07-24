@@ -248,6 +248,12 @@ $sheet->getStyle("A3:{$lastColStr}" . ($currentRow - 1))->getBorders()->getAllBo
 $sheet->getStyle("A3:{$lastColStr}" . ($currentRow - 1))->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
 // --- 5. Output ---
+// ปกติหน้านี้ถูกเปิดตรง (guest_list ลิงก์เป็น pages/export_excel.php) จึงไม่มี buffer ค้าง
+// แต่ถ้าเปิดผ่าน router (index.php?page=export_excel) index.php จะ ob_start() + include
+// header.php ไว้ก่อนแล้ว → HTML จะไปปนหัวไฟล์ .xlsx ทำให้ Excel เปิดไม่ขึ้น
+// ทิ้ง buffer ทั้งหมดก่อนพ่นไบนารี — guard ตัวเดียวกับที่ guest_import.php:416 มีอยู่แล้ว
+while (ob_get_level() > 0) { ob_end_clean(); }
+
 $filename = "Resident_Report_" . date('Ymd_His') . ".xlsx";
 header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 header('Content-Disposition: attachment;filename="' . $filename . '"');
