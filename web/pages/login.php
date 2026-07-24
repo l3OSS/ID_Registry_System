@@ -46,13 +46,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // 2. ตรวจสอบรหัสผ่าน
             if ($user && password_verify($password, $user['password_hash'])) {
 
-                // "จำการเข้าสู่ระบบ" — ถ้าติ๊กไว้ ให้ cookie อยู่ข้ามการปิดเบราว์เซอร์ (30 วัน)
-                // ต้องตั้ง cookie params ก่อน session_regenerate_id เพราะการ regenerate
-                // จะส่ง Set-Cookie ใหม่ตาม params ปัจจุบัน (lifetime ที่ตั้งไว้ตรงนี้)
+                // 🛡️ Security: ป้องกัน Session Fixation โดยการสร้าง ID ใหม่หลังล็อกอินสำเร็จ
+                session_regenerate_id(true);
+
+                /**
+                 * "จำการเข้าสู่ระบบ" — ถ้าติ๊กไว้ ให้คุกกี้อยู่ข้ามการปิดเบราว์เซอร์ (30 วัน)
+                 *
+                 * 🐞 ของเดิมเรียก session_set_cookie_params() ตรงนี้ ซึ่ง **ใช้ไม่ได้**:
+                 * index.php เรียก start_secure_session() เปิด session ไปแล้วตั้งแต่ต้น request
+                 * → PHP เตือน "Session cookie parameters cannot be changed when a session is active"
+                 *   แล้ว **ไม่ทำอะไรเลย** (เห็นใน php_error.log) คุกกี้จึงเป็น session cookie เสมอ
+                 *   = ติ๊กหรือไม่ติ๊กก็ผลเท่ากัน ปิดเบราว์เซอร์แล้วหลุดทุกครั้ง
+                 *
+                 * วิธีที่ได้ผลกับ session ที่ active แล้ว คือส่ง Set-Cookie ของ session ซ้ำเอง
+                 * พร้อม expires · และต้องส่ง **หลัง** session_regenerate_id(true) เพื่อให้
+                 * (ก) ได้ session_id() ตัวใหม่ และ (ข) ทับใบที่ regenerate ส่งไปก่อนซึ่ง lifetime = 0
+                 *
+                 * แนวเดียวกับที่โปรเจกต์ Sec ใช้อยู่แล้วใน core/session.php::remember_login()
+                 */
                 if (!empty($_POST['remember'])) {
                     $cp = session_get_cookie_params();
-                    session_set_cookie_params([
-                        'lifetime' => SESSION_REMEMBER_LIFETIME,
+                    setcookie(session_name(), session_id(), [
+                        'expires'  => time() + SESSION_REMEMBER_LIFETIME,
                         'path'     => $cp['path'],
                         'domain'   => $cp['domain'],
                         'httponly' => true,
@@ -60,9 +75,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'secure'   => $cp['secure'],
                     ]);
                 }
-
-                // 🛡️ Security: ป้องกัน Session Fixation โดยการสร้าง ID ใหม่หลังล็อกอินสำเร็จ
-                session_regenerate_id(true);
 
                 // 3. เก็บข้อมูลลง Session
                 $_SESSION['user_id']     = $user['id'];
