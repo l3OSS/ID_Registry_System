@@ -27,25 +27,33 @@ if ($admin_id <= 0) {
 }
 
 try {
-    // แก้ไขจุดนี้: ล้างทุกอย่างรวมถึง Token และวันหมดอายุ
-    $stmt = $pdo->prepare(
-        "UPDATE temp_sync_consent
-         SET status = 'none', 
-             citizen_data = NULL,
-             sync_token = NULL,
-             expires_at = NULL,
-             updated_at = CURRENT_TIMESTAMP
-         WHERE admin_id = ?"
-    );
-    $stmt->execute([$admin_id]);
+    /**
+     * 🐞 ของเดิมเขียน `status = 'none'` แต่คอลัมน์เป็น enum('pending','confirmed') —
+     * ไม่มีค่า 'none' อยู่จริง · MariaDB โหมด STRICT_TRANS_TABLES จึงตอบ
+     * `1265 Data truncated for column 'status'` ทั้ง UPDATE และ INSERT fallback
+     * → endpoint นี้ throw ทุกครั้ง คืน 500 และ **ไม่เคยล้างแถวได้เลยสักครั้ง**
+     * (เงียบมานานเพราะ guest_form.php เรียกด้วย `await fetch()` โดยไม่เช็ค res.ok)
+     *
+     * แก้เป็น "ลบแถวทิ้ง" ซึ่งตรงกับที่ระบบใช้แทนสถานะว่างอยู่แล้ว:
+     *   - sync_check.php  ไม่เจอแถว → คืน {"status":"none"}
+     *   - guest_display.php รองรับ data.status === 'none' อยู่แล้ว
+     * จึงไม่ต้องเพิ่มค่าใน enum และ **ไม่ต้อง migrate ฐานข้อมูลเดิม** — อัปโค้ดอย่างเดียวพอ
+     */
 
-    // กรณีที่ Admin นี้ยังไม่มีแถวข้อมูลในตาราง (เช่น เพิ่งติดตั้งระบบ)
-    if ($stmt->rowCount() === 0) {
-        $pdo->prepare(
-            "INSERT INTO temp_sync_consent (admin_id, status, citizen_data, sync_token, expires_at)
-             VALUES (?, 'none', NULL, NULL, NULL)"
-        )->execute([$admin_id]);
+    // ต้องอ่าน citizen_data ให้ได้ชื่อไฟล์รูป "ก่อน" ลบแถว ไม่งั้น pointer หายแล้วตามไฟล์ไม่เจอ
+    // = รูปบัตรค้างใน uploads/temp ถาวร (ของเดิมไม่เคยลบรูปเลย ต่างจาก sync_confirm.php)
+    $sel = $pdo->prepare("SELECT citizen_data FROM temp_sync_consent WHERE admin_id = ? LIMIT 1");
+    $sel->execute([$admin_id]);
+    $prev = json_decode((string)($sel->fetchColumn() ?: '[]'), true) ?: [];
+    if (!empty($prev['_img'])) {
+        $path = __DIR__ . '/../uploads/temp/' . basename((string)$prev['_img']);
+        if (is_file($path)) {
+            @unlink($path);
+        }
     }
+
+    // ไม่มีแถวอยู่แล้วก็ไม่เป็นไร — DELETE ที่ไม่โดนแถวไหนไม่ถือว่าผิดพลาด (ผลลัพธ์ = "ว่าง" เหมือนกัน)
+    $pdo->prepare("DELETE FROM temp_sync_consent WHERE admin_id = ?")->execute([$admin_id]);
 
     echo json_encode([
         'success' => true,
