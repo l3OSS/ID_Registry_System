@@ -132,6 +132,50 @@ function dateThai($strDate) {
 }
 
 /**
+ * แปลงค่าวันที่ที่ผู้ใช้กรอก → 'Y-m-d' · แปลงไม่ได้คืน null
+ *
+ * ทำไมต้องมี: ช่องวันเกิดในฟอร์มเป็น <input type="text"> (flatpickr + ปฏิทิน พ.ศ.)
+ * ไม่ใช่ type="date" → เบราว์เซอร์ไม่กันค่าประหลาด ถ้า JS ไม่ทำงานหรือผู้ใช้วางข้อความทับ
+ * ค่าดิบจะไหลเข้า SQL แล้วชน `SQLSTATE[22007] Incorrect date value` = **INSERT ล้มทั้งแถว
+ * ผู้ใช้เสียข้อมูลที่กรอกมาทั้งหมด** (เจอตอนทดสอบ 2026-07-24)
+ *
+ * รับ 'Y-m-d' (ที่ flatpickr ส่งมาปกติ) และ 'd/m/Y' · ปี > 2400 ถือเป็น พ.ศ. แล้วลบ 543
+ * ตรรกะชุดเดียวกับที่ guest_import.php ใช้มาก่อน — ย้ายขึ้นมาไว้ที่เดียวให้ใช้ร่วมกัน
+ */
+function normalizeDateInput(?string $s): ?string {
+    $s = trim((string)$s);
+    if ($s === '' || $s === '0000-00-00') return null;
+
+    if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})/', $s, $m))     { $y = (int)$m[1]; $mo = (int)$m[2]; $d = (int)$m[3]; }
+    elseif (preg_match('#^(\d{1,2})/(\d{1,2})/(\d{4})#', $s, $m)) { $d = (int)$m[1]; $mo = (int)$m[2]; $y = (int)$m[3]; }
+    else return null;
+
+    if ($y > 2400) $y -= 543;                 // เผื่อกรอกเป็น พ.ศ.
+    return checkdate($mo, $d, $y) ? sprintf('%04d-%02d-%02d', $y, $mo, $d) : null;
+}
+
+/**
+ * แปลงค่าวันที่+เวลาที่ผู้ใช้กรอก → 'Y-m-d H:i:s' · แปลงไม่ได้คืนค่า $fallback
+ * ใช้กับคอลัมน์ที่เป็น NOT NULL (เช่น stay_history.check_in) ซึ่งคืน null ไม่ได้
+ */
+function normalizeDateTimeInput(?string $s, ?string $fallback = null): string {
+    $fallback = $fallback ?? date('Y-m-d H:i:s');
+    $s = trim((string)$s);
+    if ($s === '') return $fallback;
+
+    $date = normalizeDateInput($s);
+    if ($date === null) return $fallback;
+
+    // ดึงเวลาต่อท้ายถ้ามี (flatpickr ส่ง 'Y-m-d H:i' สำหรับช่องวันเข้าพัก)
+    $time = '00:00:00';
+    if (preg_match('/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*$/', $s, $t)) {
+        $h = (int)$t[1]; $i = (int)$t[2]; $sec = (int)($t[3] ?? 0);
+        if ($h < 24 && $i < 60 && $sec < 60) $time = sprintf('%02d:%02d:%02d', $h, $i, $sec);
+    }
+    return $date . ' ' . $time;
+}
+
+/**
  * คำนวณอายุจากวันเกิด (รองรับทั้ง ค.ศ. และ พ.ศ.)
  */
 function calculateAge($birthdate) {
@@ -161,7 +205,10 @@ function getVulnerableText($pdo, $citizen_id, $age = null) {
     $stmt->execute([$citizen_id]);
     $items = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-    if ($age !== null) {
+    // ตัวเรียกบางที่ส่ง 0 มาเมื่อ "ไม่มีวันเกิด" (ไม่ใช่ "อายุ 0 ขวบ") — ถ้ารับตรง ๆ จะขึ้น
+    // "เด็ก (0-5 ปี)" ให้คนที่ไม่รู้อายุ เหมือนบั๊กที่แก้ไปแล้วใน guest_check.php
+    // จึงถือว่า 0 = ไม่ทราบ แล้วไม่เดาให้ (เด็กแรกเกิดจริง ๆ ให้ติ๊กกลุ่มเปราะบางเอง ซึ่งดึงมาจาก map ด้านบนอยู่แล้ว)
+    if ($age !== null && $age > 0) {
         if ($age <= 5) $items[] = "เด็ก (0-5 ปี)";
         if ($age >= 60) $items[] = "ผู้สูงอายุ";
     }
