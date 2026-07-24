@@ -240,11 +240,17 @@ writeLog($pdo, 'VIEW_HISTORY', "Accessed profile: $fullname (ID: $id)");
                             <td><small class="text-muted fw-bold"><?php echo htmlspecialchars($h['admin_name'] ?: 'System'); ?></small></td>
                             <td class="text-end pe-4 no-print">
                                 <?php if ($h['status'] === 'Active'): ?>
-                                    <a href="pages/checkout_save.php?stay_id=<?php echo $h['id']; ?>&citizen_id=<?php echo htmlspecialchars($public_id); ?>"
-                                       class="btn btn-danger btn-sm rounded-pill px-3 shadow-sm"
-                                       onclick="return confirm('<?php echo e('hist.confirm_checkout'); ?>');">
-                                        <i class="bi bi-box-arrow-right"></i> <?php echo e('hist.checkout_btn'); ?>
-                                    </a>
+                                    <!-- ต้องเป็น POST + csrf: ลงทะเบียนออกคือการเปลี่ยนสถานะข้อมูล
+                                         ถ้าเป็นลิงก์ GET เฉย ๆ จะถูกสั่งจากหน้าอื่นผ่าน <img src> ได้ (CSRF) -->
+                                    <form method="POST" action="pages/checkout_save.php" class="d-inline"
+                                          onsubmit="return confirm('<?php echo e('hist.confirm_checkout'); ?>');">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="stay_id" value="<?php echo (int)$h['id']; ?>">
+                                        <input type="hidden" name="citizen_id" value="<?php echo htmlspecialchars($public_id); ?>">
+                                        <button type="submit" class="btn btn-danger btn-sm rounded-pill px-3 shadow-sm">
+                                            <i class="bi bi-box-arrow-right"></i> <?php echo e('hist.checkout_btn'); ?>
+                                        </button>
+                                    </form>
                                 <?php else: ?>
                                     <i class="bi bi-check-circle-fill text-success fs-5"></i>
                                 <?php endif; ?>
