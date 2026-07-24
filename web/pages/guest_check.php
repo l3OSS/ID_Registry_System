@@ -78,7 +78,10 @@ function saveCitizenAndStay($pdo, $post_data, $old_data = null, $decision = null
         $prefix = $post_data['prefix'] ?? '';
         $firstname = $post_data['firstname'] ?? '';
         $lastname = $post_data['lastname'] ?? '';
-        $birthdate = !empty($post_data['birthdate']) ? $post_data['birthdate'] : NULL;
+        // ผ่าน normalizeDateInput() ก่อนเสมอ — ช่องนี้เป็น <input type="text"> เบราว์เซอร์ไม่กันค่าประหลาด
+        // ถ้าส่งค่าดิบเข้า SQL จะชน 22007 แล้ว INSERT ล้มทั้งแถว (ผู้ใช้เสียข้อมูลที่กรอกมาหมด)
+        // แปลงไม่ได้ = เก็บ NULL ดีกว่าทิ้งทั้งเรคคอร์ด · รองรับ พ.ศ. ให้ด้วยในตัว
+        $birthdate = normalizeDateInput($post_data['birthdate'] ?? null);
         
         $gender_input = $post_data['gender'] ?? '';
         $gender = null;
@@ -124,11 +127,24 @@ if (!$address_id && !empty($post_data['addr_tambon'])) {
             }
         }
 
-        $age = 0;
+        /**
+         * 🐞 เดิมตั้ง `$age = 0` เป็นค่าเริ่มต้น แล้วปล่อยให้ตกไปเข้าเงื่อนไข `$age <= 5`
+         * → **คนที่ไม่กรอกวันเกิดถูกติดแท็ก "0-5 ขวบ" ทุกคน** (ไม่มีวันเกิด ≠ เป็นเด็ก)
+         * ทำให้สถิติ/รายงานกลุ่มเปราะบางเพี้ยนโดยไม่มีอะไรฟ้อง
+         *
+         * แก้เป็น `null` = "ไม่รู้อายุ" แล้วข้ามการติดแท็กอัตโนมัติไปเลย —
+         * เจ้าหน้าที่ยังติ๊กเองได้ถ้ารู้ว่าเป็นเด็ก/ผู้สูงอายุ
+         * (ตรงกับ imp_autoTagByAge() ในตัวนำเข้าไฟล์ที่แก้ไว้ก่อนหน้า)
+         */
+        $age = null;
 if (!empty($birthdate) && $birthdate != '0000-00-00') {
-    $birthDateObj = new DateTime($birthdate);
-    $today = new DateTime();
-    $age = $today->diff($birthDateObj)->y;
+    try {
+        $birthDateObj = new DateTime($birthdate);
+        $today = new DateTime();
+        $age = $today->diff($birthDateObj)->y;
+    } catch (Exception $e) {
+        $age = null;   // วันเกิดพัง = ไม่เดาอายุ
+    }
 }
 
 // ตรวจสอบและเพิ่มกลุ่มเป้าหมายอัตโนมัติลงใน Array vulnerable
@@ -137,12 +153,14 @@ if (!isset($post_data['vulnerable'])) {
 }
 
 // ID 1 = เด็ก (0-5 ปี), ID 2 = ผู้สูงอายุ (60 ปีขึ้นไป)
-// ตรวจสอบตาม Master Table ของคุณ
-if ($age <= 5 && !in_array(1, $post_data['vulnerable'])) {
-    $post_data['vulnerable'][] = 1; 
-}
-if ($age >= 60 && !in_array(2, $post_data['vulnerable'])) {
-    $post_data['vulnerable'][] = 2;
+// ตรวจสอบตาม Master Table ของคุณ — ติดให้เฉพาะเมื่อ "รู้อายุจริง" เท่านั้น
+if ($age !== null) {
+    if ($age <= 5 && !in_array(1, $post_data['vulnerable'])) {
+        $post_data['vulnerable'][] = 1;
+    }
+    if ($age >= 60 && !in_array(2, $post_data['vulnerable'])) {
+        $post_data['vulnerable'][] = 2;
+    }
 }
 
         $citizen_id = 0;
@@ -193,7 +211,9 @@ if ($age >= 60 && !in_array(2, $post_data['vulnerable'])) {
         $is_edit = ($post_data['action'] ?? '') === 'update';
 
         if (!$active_stay_id) {
-            $check_in_date = $post_data['check_in_date'] ?? date('Y-m-d H:i:s');
+            // ช่องเดียวกันกับวันเกิด: เป็น text + flatpickr → ค่าประหลาดทำ INSERT ล้มได้เหมือนกัน
+            // ต่างกันตรง check_in เป็น NOT NULL จึง fallback เป็นเวลาปัจจุบันแทน null
+            $check_in_date = normalizeDateTimeInput($post_data['check_in_date'] ?? null);
             $admin_id = $_SESSION['user_id'] ?? 0;
 
             $sql_stay = "INSERT INTO stay_history (citizen_id, check_in, location_type, status, admin_id)
