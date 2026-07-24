@@ -13,18 +13,33 @@ require_once __DIR__ . '/../core/auth.php';
 require_once __DIR__ . '/../core/log.php';
 require_once __DIR__ . '/../core/functions.php'; // resolveCitizenId (P7)
 require_once __DIR__ . '/../core/lang.php';       // ข้อความทั้งระบบ — POST ตรง ไม่ผ่าน index.php
+require_once __DIR__ . '/../core/csrf.php';       // ไฟล์นี้ถูก POST ตรง ไม่ผ่าน router จึงต้องตรวจเอง
 
 // --- 2. Security Check ---
 // ตรวจสอบว่าผู้ใช้มีสิทธิ์เข้าถึงหน้านี้หรือไม่ (ต้อง Login แล้ว)
 checkLogin();
 
+/**
+ * 🛡️ เดิมหน้านี้รับค่าทาง **GET** และมีแค่ checkLogin() — เป็น state change ที่เรียกได้ด้วย URL เปล่า ๆ
+ * แปลว่าแค่ฝัง <img src=".../checkout_save.php?stay_id=..&citizen_id=..."> ไว้หน้าไหนก็ได้
+ * เจ้าหน้าที่ที่ล็อกอินค้างอยู่เปิดเจอ = ผู้พักถูกลงทะเบียนออกทันทีโดยไม่มีใครกดอะไร (CSRF)
+ *
+ * แก้เป็น: รับเฉพาะ POST + ตรวจ csrf token — แนวเดียวกับ guest_check.php ที่ถูก POST ตรงเหมือนกัน
+ * (GET ไม่ควรเปลี่ยนสถานะข้อมูลอยู่แล้วตามหลัก HTTP · prefetch/crawler ของเบราว์เซอร์ก็ยิงโดนได้)
+ */
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+    header('Location: ../index.php?page=guest_list');
+    exit();
+}
+csrf_verify();
+
 // ตั้งค่า Timezone ให้ตรงกับไทย
 date_default_timezone_set('Asia/Bangkok');
 
 // --- 3. Parameter Processing ---
-$stay_id        = filter_input(INPUT_GET, 'stay_id', FILTER_VALIDATE_INT) ?? 0;
-// P7: citizen_id ใน URL เป็น public_id — เก็บไว้ redirect กลับ + แปลงเป็น internal สำหรับ query
-$citizen_public = preg_replace('/\D/', '', (string)($_GET['citizen_id'] ?? ''));
+$stay_id        = filter_input(INPUT_POST, 'stay_id', FILTER_VALIDATE_INT) ?? 0;
+// P7: citizen_id ที่ส่งมาเป็น public_id — เก็บไว้ redirect กลับ + แปลงเป็น internal สำหรับ query
+$citizen_public = preg_replace('/\D/', '', (string)($_POST['citizen_id'] ?? ''));
 $citizen_id     = resolveCitizenId($pdo, $citizen_public);
 
 if ($stay_id > 0 && $citizen_id > 0) {
