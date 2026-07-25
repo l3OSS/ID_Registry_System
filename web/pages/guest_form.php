@@ -117,6 +117,10 @@ if ($id > 0) {
                             <div class="col-md-4">
                                 <label class="form-label text-danger fw-bold"><?php echo e('form.id_card'); ?></label>
                                 <input type="text" name="id_card" id="id_card" class="form-control form-control-lg border-primary" maxlength="13" placeholder="<?php echo e('form.id_card_ph'); ?>" required value="<?php echo htmlspecialchars($citizen['id_card'] ?? ''); ?>">
+                                <!-- คำเตือน checksum — "เตือน ไม่บล็อก" หน้างานยังบันทึกต่อได้ถ้ายืนยันว่าเลขถูก -->
+                                <div id="id_card_warn" class="small text-warning-emphasis mt-1 d-none">
+                                    <i class="bi bi-exclamation-triangle-fill"></i> <span id="id_card_warn_msg"></span>
+                                </div>
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label"><?php echo e('form.prefix'); ?></label>
@@ -355,6 +359,8 @@ if ($id > 0) {
 
 // ข้อความทั้งหมดในสคริปต์นี้มาจากไฟล์ภาษา (ห้ามฝังคำไทยใน JS)
 const L = <?php echo json_encode([
+    'id_bad_checksum'    => t('form.js_id_bad_checksum'),
+    'id_bad_length'      => t('form.js_id_bad_length'),
     'opening_program'    => t('form.js_opening_program'),
     'reading_card'       => t('form.js_reading_card'),
     'success'            => t('form.js_success'),
@@ -544,6 +550,7 @@ async function readSmartCard() {
 
         // 3. Map ข้อมูลลงฟิลด์ต่างๆ (กันค่า undefined จากบัตรที่อ่านได้ไม่ครบ)
         setVal('id_card', data.CitizenID || '');
+        checkIdCard();   // เลขจากเครื่องอ่านบัตรก็ตรวจด้วย (เผื่ออ่านมาไม่ครบ/เพี้ยน)
         setVal('firstname', data.Firstname || '');
         setVal('lastname', data.Lastname || '');
         setVal('prefix', data.Prefix || '');
@@ -755,6 +762,52 @@ function installBuddhistYear(fp) {
         desc.set.call(y, String(fp.currentYear + 543));
     });
 }
+
+/**
+ * ตรวจ checksum เลขบัตรประชาชนไทยฝั่งหน้าจอ — **เตือนอย่างเดียว ไม่ห้ามบันทึก**
+ * เพราะหน้างานอาจต้องรับข้อมูลที่ยังไม่ครบ/ยืนยันเองว่าเลขถูก
+ * (สูตรเดียวกับ imp_validThaiId() ในตัวนำเข้า)
+ */
+function thaiIdValid(id) {
+    if (!/^\d{13}$/.test(id)) return false;
+    let sum = 0;
+    for (let i = 0; i < 12; i++) sum += parseInt(id[i], 10) * (13 - i);
+    return ((11 - (sum % 11)) % 10) === parseInt(id[12], 10);
+}
+
+function checkIdCard() {
+    const el   = document.getElementById('id_card');
+    const box  = document.getElementById('id_card_warn');
+    const msg  = document.getElementById('id_card_warn_msg');
+    if (!el || !box || !msg) return;
+
+    const raw = (el.value || '').replace(/[-\s]/g, '');
+    let warn = '';
+    if (raw !== '' && /^\d+$/.test(raw)) {          // เลขล้วนเท่านั้นถึงจะตรวจ (พาสปอร์ตมีตัวอักษร ข้ามไป)
+        if (raw.length !== 13)      warn = L.id_bad_length.replace(':n', String(raw.length));
+        else if (!thaiIdValid(raw)) warn = L.id_bad_checksum;
+    }
+    msg.textContent = warn;
+    box.classList.toggle('d-none', warn === '');
+    el.classList.toggle('border-warning', warn !== '');
+}
+
+/**
+ * ผูก event ของคำเตือนเลขบัตรไว้ใน listener ของตัวเอง แยกจากตัวจัดการ DOMContentLoaded ก้อนใหญ่
+ * เพื่อไม่ให้ error ที่เกิดกลางก้อนใหญ่ (โค้ด jQuery/flatpickr) ลามมาทำให้คำเตือนนี้ไม่ถูกผูก
+ *
+ * ⚠️ หมายเหตุ: **ไม่ได้ช่วยกรณี jQuery โหลดไม่ได้เลย** — บนสุดของสคริปต์บล็อกนี้มี
+ * `$(document).ready(...)` ระดับ top-level อยู่ก่อนแล้ว ถ้า $ ไม่มี จะ throw ตั้งแต่บรรทัดนั้น
+ * และทั้งบล็อกหยุดทำงาน (ตรวจด้วย jsdom แล้ว) · หน้านี้พึ่ง CDN ทั้งหน้าอยู่แล้ว
+ * (autocomplete ที่อยู่ / flatpickr / อ่านบัตร / ส่งแท็บเล็ต) ถ้า CDN ล่มก็ใช้งานไม่ได้อยู่ดี
+ */
+document.addEventListener('DOMContentLoaded', function () {
+    const idEl = document.getElementById('id_card');
+    if (!idEl) return;
+    idEl.addEventListener('input', checkIdCard);
+    idEl.addEventListener('blur', checkIdCard);
+    checkIdCard();   // เผื่อเปิดหน้าแก้ไขที่มีเลขเดิมผิดอยู่แล้ว
+});
 
 function autoCheckAge(birthDateStr) {
     if(!birthDateStr) return;

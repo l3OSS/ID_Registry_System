@@ -50,8 +50,12 @@ $FIXED_FIELDS = [
     17 => 'home_addr_amphoe',
     18 => 'home_addr_province',
     19 => 'home_addr_zipcode',
+    // กลุ่ม "ข้อมูลสุขภาพ" — ตรงกับคอลัมน์ medical_info/notes ที่ฟอร์มลงทะเบียนบันทึกอยู่แล้ว
+    // (เดิมตัวนำเข้าไม่มี 2 ช่องนี้เลย นำเข้าแล้วต้องมาพิมพ์เองทีหลังทุกคน)
+    20 => 'medical_info',
+    21 => 'notes',
 ];
-$FIRST_SPECIAL_IDX = 20;   // ตำแหน่งเริ่มของกลุ่ม "สถานะกลุ่มพิเศษ" (vulnerable + custom)
+$FIRST_SPECIAL_IDX = 22;   // ตำแหน่งเริ่มของกลุ่ม "สถานะกลุ่มพิเศษ" (vulnerable + custom)
 
 // master ของกลุ่มพิเศษ — ลำดับตรงกับ export_excel (ORDER BY id ASC) เพื่อจับคู่ตามตำแหน่งได้
 $V_MASTER = $pdo->query("SELECT id, v_name FROM vulnerable_master ORDER BY id ASC")->fetchAll();
@@ -229,6 +233,7 @@ function imp_buildReopenEntry(array $old, array $d, array $special, int $rowNum)
         'home_addr_amphoe' => $d['home_addr_amphoe'], 'home_addr_province' => $d['home_addr_province'],
         'home_addr_zipcode' => $d['home_addr_zipcode'],
         'phone' => $d['phone'],
+        'medical_info' => $d['medical_info'], 'notes' => $d['notes'],
         'special' => $special,
     ];
     return [
@@ -277,6 +282,9 @@ function imp_applyNewData(PDO $pdo, int $cid, array $n): bool {
             $sets[] = "home_addr_number = ?"; $vals[] = $home['number'];
         }
         if ($n['phone'] !== null && $n['phone'] !== '') { $sets[] = "phone_enc = ?"; $vals[] = encryptData($n['phone']); }
+        // ข้อมูลสุขภาพ — เขียนเฉพาะเมื่อไฟล์มีค่า (ไฟล์เว้นว่าง = ไม่ลบของเดิมทิ้ง)
+        $put('medical_info', $n['medical_info'] ?? null);
+        $put('notes', $n['notes'] ?? null);
         if ($sets) {
             $sets[] = "updated_at = NOW()"; $vals[] = $cid;
             $pdo->prepare("UPDATE citizens SET " . implode(', ', $sets) . " WHERE id = ?")->execute($vals);
@@ -349,8 +357,26 @@ function imp_process(PDO $pdo, array $file, array $fixed, int $firstSpecialIdx, 
         if ($idRaw === '')          { $skip('imp.skip_no_id');   continue; }
         if ($d['firstname'] === '') { $skip('imp.skip_no_name'); continue; }
 
-        // ตรวจชนิด: 13 หลัก = บัตร ปช. (checksum เข้ม) · อื่น ๆ = พาสปอร์ต (ตัวอักษร/ตัวเลข 5-20)
-        if (ctype_digit($idRaw) && strlen($idRaw) === 13) {
+        /**
+         * ตรวจชนิด: เลขล้วน = บัตรประชาชนไทย (ต้อง 13 หลัก + checksum) · มีตัวอักษร = พาสปอร์ต
+         *
+         * 🐞 เดิมเงื่อนไขเป็น `ctype_digit && strlen === 13` → **เลขล้วนที่ยาว 12 หรือ 14 หลัก
+         * ตกไปเข้าเส้นทางพาสปอร์ตแล้วผ่านฉลุย** เพราะ `[A-Za-z0-9]{5,20}` รับตัวเลขล้วนด้วย
+         * (ไฟล์ data_700 มี 30 แถวเล็ดลอดเข้ามาทางนี้ — เกือบทั้งหมดคือเลขบัตรที่พิมพ์ตก/เกินหลัก
+         * ไม่ใช่พาสปอร์ตจริง) · ข้อมูลผิดที่เข้าไปแล้วตามแก้ยากเพราะเลขถูกแฮชทันที
+         *
+         * แก้: เลขล้วนต้องยาว 13 หลักเท่านั้น — ยาวไม่ครบ/เกินถือว่าพิมพ์ผิด ไม่ใช่พาสปอร์ต
+         * (พาสปอร์ตที่เป็นตัวเลขล้วนล้วนพบน้อยมาก · ถ้าเจอเคสจริงให้ใส่ตัวอักษรนำหน้า
+         *  ซึ่งข้อความแจ้งเตือนบอกทางออกไว้แล้ว)
+         */
+        if (ctype_digit($idRaw)) {
+            if (strlen($idRaw) !== 13) {
+                $skip('imp.skip_id_len', t('imp.skip_id_len_detail', [
+                    'id'  => $idRaw,
+                    'len' => (string)strlen($idRaw),
+                ]));
+                continue;
+            }
             if (!imp_validThaiId($idRaw)) {
                 // บอกให้ครบว่าเลขอะไร และหลักสุดท้ายที่ถูกต้องคืออะไร — แก้ในไฟล์ได้ทันทีโดยไม่ต้องเดา
                 $skip('imp.skip_bad_id', t('imp.skip_bad_id_detail', [
@@ -424,8 +450,9 @@ function imp_process(PDO $pdo, array $file, array $fixed, int $firstSpecialIdx, 
                 "INSERT INTO citizens
                  (public_id, id_card_hash, id_card_enc, id_card_last4, prefix, firstname, lastname,
                   gender, birthdate, addr_number, addr_tambon, addr_amphoe, addr_province, address_id,
-                  home_same_as_reg, home_address_id, home_addr_number, phone_enc)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                  home_same_as_reg, home_address_id, home_addr_number, phone_enc,
+                  medical_info, notes)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             );
             $ins->execute([
                 $public_id, $hash, encryptData($idRaw), substr($idRaw, -4),
@@ -438,10 +465,12 @@ function imp_process(PDO $pdo, array $file, array $fixed, int $firstSpecialIdx, 
                 $address_id,
                 $home['same'], $home['address_id'], $home['number'],
                 $d['phone'] !== '' ? encryptData($d['phone']) : null,
+                $d['medical_info'] !== '' ? $d['medical_info'] : null,
+                $d['notes'] !== '' ? $d['notes'] : null,
             ]);
             $cid = (int)$pdo->lastInsertId();
 
-            // กลุ่มพิเศษจากไฟล์ (ไม่ auto-assign ตามอายุ — ไฟล์เป็นแหล่งความจริง เข้าคู่กับ export)
+            // กลุ่มพิเศษจากไฟล์ + ที่ imp_autoTagByAge() เติมให้ตามอายุ (union แล้วตั้งแต่ตอนอ่านแถว)
             imp_writeSpecial($pdo, $cid, $special);
 
             // เช็คอินอัตโนมัติ (Active stay)
@@ -507,7 +536,20 @@ if (($_GET['download'] ?? '') === 'template') {
         $sh->setCellValue(Coordinate::stringFromColumnIndex($addrStart) . '1', $grpName);
     }
 
-    // 3) กลุ่ม "สถานะกลุ่มพิเศษ" — ผสานแนวนอน (แถว 1) + หัวย่อย vulnerable + custom (แถว 2)
+    // 3) กลุ่ม "ข้อมูลสุขภาพ" — ผสานแนวนอน (แถว 1) + หัวย่อย 2 ช่อง (แถว 2)
+    //    วางไว้ "ก่อน" กลุ่มสถานะพิเศษ เพื่อให้ช่องตำแหน่งคงที่อยู่รวมกันหมด
+    //    แล้วปล่อยกลุ่มที่ความกว้างไม่แน่นอน (vulnerable/custom) ไว้ท้ายสุดตัวเดียว
+    $healthStart = $col;
+    foreach ([t('imp.col_medical'), t('imp.col_notes')] as $sub) {
+        $L = Coordinate::stringFromColumnIndex($col);
+        $sh->setCellValue("{$L}2", $sub);
+        $sh->getColumnDimension($L)->setAutoSize(true);
+        $col++;
+    }
+    $sh->mergeCells(Coordinate::stringFromColumnIndex($healthStart) . '1:' . Coordinate::stringFromColumnIndex($col - 1) . '1');
+    $sh->setCellValue(Coordinate::stringFromColumnIndex($healthStart) . '1', t('imp.grp_health'));
+
+    // 4) กลุ่ม "สถานะกลุ่มพิเศษ" — ผสานแนวนอน (แถว 1) + หัวย่อย vulnerable + custom (แถว 2)
     $spStart = $col;
     foreach ($GLOBALS['V_MASTER'] as $v) {
         $L = Coordinate::stringFromColumnIndex($col);
@@ -533,7 +575,9 @@ if (($_GET['download'] ?? '') === 'template') {
     // 🐞 เลขเดิม 1101700230705 **ตก checksum** (หลักตรวจที่ถูกคือ 8 ไม่ใช่ 5) → ใครลอกแถวตัวอย่าง
     // ไปใช้จะถูก imp_validThaiId() ข้ามทิ้งพร้อมข้อความ "เลขบัตรประชาชนไม่ถูกต้อง" ทันที
     $sample = ['1', '1101700230708', 'นาย', 'สมชาย', 'ใจดี', 'ชาย', '1990-05-01', '0812345678', 'ในศูนย์', date('Y-m-d'),
-               '99/1', 'ในเมือง', 'เมืองขอนแก่น', 'ขอนแก่น', '40000'];
+               '99/1', 'ในเมือง', 'เมืองขอนแก่น', 'ขอนแก่น', '40000',
+               '', '', '', '', '',                          // ชุดภูมิลำเนา — เว้นว่าง = ไม่มีข้อมูล
+               'เบาหวาน · แพ้ยาเพนนิซิลิน', 'ตัวอย่าง — ลบแถวนี้ก่อนนำเข้าจริง'];
     $sh->fromArray($sample, null, 'A3');
 
     $sh->getStyle("A1:{$lastCol}2")->applyFromArray([
