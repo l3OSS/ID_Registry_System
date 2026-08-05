@@ -198,6 +198,55 @@ function migHomeAddress(PDO $pdo, bool $apply = true): string
 }
 
 /**
+ * Denormalize สถานะเข้าพักลง citizens — แก้คอขวดหน้ารายชื่อ/แดชบอร์ดบนข้อมูลจำนวนมาก
+ *   is_active TINYINT(1)  — 1 = มี stay ที่ status='Active' อยู่
+ *   last_stay_at DATETIME — MAX(check_in) ของ stay ทั้งหมด (ใช้เรียงลำดับแทน correlated subquery)
+ * + index (is_active, last_stay_at) เพื่อให้ WHERE is_active=1 ORDER BY last_stay_at ใช้ index ได้
+ * idempotent: เพิ่มเฉพาะที่ยังไม่มี · การ backfill ทำแยกใน scripts/migrate_stay_denorm.php (แบตช์ตาม id)
+ */
+function migStayDenorm(PDO $pdo, bool $apply = true): string
+{
+    $cols = $pdo->query(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'citizens'
+           AND COLUMN_NAME IN ('is_active', 'last_stay_at')"
+    )->fetchAll(PDO::FETCH_COLUMN);
+
+    $todo = [];
+    if (!in_array('is_active', $cols, true)) {
+        $todo[] = "ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 0 AFTER photo_path";
+    }
+    if (!in_array('last_stay_at', $cols, true)) {
+        $todo[] = "ADD COLUMN last_stay_at DATETIME DEFAULT NULL AFTER is_active";
+    }
+
+    $hasIdx = (bool)$pdo->query(
+        "SELECT COUNT(*) FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'citizens' AND INDEX_NAME = 'idx_active_recent'"
+    )->fetchColumn();
+    if (!$hasIdx) {
+        $todo[] = "ADD INDEX idx_active_recent (is_active, last_stay_at)";
+    }
+
+    // index ช่วยหน้าแดชบอร์ด (นับ check-in/check-out ของวันนี้ด้วย range แทน DATE())
+    $hasStayIdx = (bool)$pdo->query(
+        "SELECT COUNT(*) FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stay_history' AND INDEX_NAME = 'idx_check_in'"
+    )->fetchColumn();
+
+    if (!$todo && $hasStayIdx) return "stay-denorm: มีคอลัมน์/index ครบแล้ว";
+    if (!$apply) {
+        $msg = $todo ? implode(', ', $todo) : '';
+        if (!$hasStayIdx) $msg .= ($msg ? ' + ' : '') . 'stay_history ADD INDEX idx_check_in (check_in)';
+        return "stay-denorm: (dry-run) จะ $msg";
+    }
+
+    if ($todo) { $pdo->exec("ALTER TABLE citizens " . implode(', ', $todo)); }
+    if (!$hasStayIdx) { $pdo->exec("ALTER TABLE stay_history ADD INDEX idx_check_in (check_in)"); }
+    return "stay-denorm: เพิ่มคอลัมน์/index แล้ว (citizens." . count($todo) . " รายการ" . ($hasStayIdx ? "" : " + stay_history.idx_check_in") . ")";
+}
+
+/**
  * P5+P6 — re-hash id_card_hash (domain-separated) + re-encrypt PII เป็น GCM
  * idempotent + integrity check ด้วย id_card_last4 (กันเขียนทับข้อมูลดีด้วยขยะถ้า key เพี้ยน)
  */

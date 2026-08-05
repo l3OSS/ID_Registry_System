@@ -63,7 +63,11 @@ if ($stay_id > 0 && $citizen_id > 0) {
         if ($stmt->rowCount() > 0) {
             // ✅ SUCCESS
             $_SESSION['success_msg'] = t('checkout.success');
-            
+
+            // denorm: recompute is_active (เผื่อยังมี stay Active อื่นเหลือ) — last_stay_at คงเดิม (ความ recency)
+            $pdo->prepare("UPDATE citizens SET is_active = EXISTS(SELECT 1 FROM stay_history WHERE citizen_id = ? AND status = 'Active') WHERE id = ?")
+                ->execute([$citizen_id, $citizen_id]);
+
             // 🛡️ Activity Log Entry
             writeLog($pdo, 'CHECK_OUT', "Check-out Guest ID: $citizen_id (Stay Record ID: $stay_id)");
         } else {

@@ -10,7 +10,7 @@ declare(strict_types=1);
 // --- 1. Load Composer Autoloader & Environment Variables ---
 if (file_exists(__DIR__ . '/vendor/autoload.php')) {
     require_once __DIR__ . '/vendor/autoload.php';
-    
+
     // 🔥 เพิ่มการตรวจสอบไฟล์ .env ตรงนี้
     if (file_exists(__DIR__ . '/.env')) {
         try {
@@ -21,6 +21,10 @@ if (file_exists(__DIR__ . '/vendor/autoload.php')) {
         }
     }
 }
+
+// โปรไฟเลอร์เวลา (เปิด/ปิดจุดเดียวด้วย APP_DEBUG ใน .env) — boot ให้เร็วสุดเพื่อจับเวลารวมทั้ง request
+require_once __DIR__ . '/core/debug.php';
+dbg_boot();
 
 // เริ่มระบบ Session (แนะนำให้รันหลังโหลด Env เผื่อมีการเก็บ Session ใน DB/Redis)
 // Tier1: cookie flags httponly/samesite/secure ผ่าน start_secure_session()

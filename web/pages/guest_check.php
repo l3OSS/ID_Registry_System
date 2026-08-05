@@ -220,6 +220,10 @@ if ($age !== null) {
                          VALUES (?, ?, ?, 'Active', ?)";
             $pdo->prepare($sql_stay)->execute([$citizen_id, $check_in_date, $location_type, $admin_id]);
 
+            // denorm: มี stay Active ใหม่ → ปรับสถานะบน citizens (ใช้เรียง/กรองหน้ารายชื่อโดยไม่ต้อง subquery)
+            $pdo->prepare("UPDATE citizens SET is_active = 1, last_stay_at = ? WHERE id = ?")
+                ->execute([$check_in_date, $citizen_id]);
+
             writeLog($pdo, 'CHECK_IN', "เช็คอินบุคคล ID: $citizen_id ผ่านการอ่านบัตร");
         } elseif ($is_edit) {
             // กำลังพักอยู่ + เปิดมาจากปุ่มแก้ไข → อัปเดตประเภทที่พักตามที่เลือก

@@ -15,27 +15,27 @@ checkLogin();
  * Optimization: Use a single TRY-CATCH block for database operations
  */
 try {
-    // Basic Stay Statistics
-    $count_active    = $pdo->query("SELECT COUNT(*) FROM stay_history WHERE status = 'Active'")->fetchColumn();
-    $count_today_in  = $pdo->query("SELECT COUNT(*) FROM stay_history WHERE DATE(check_in) = CURDATE()")->fetchColumn();
-    $count_today_out = $pdo->query("SELECT COUNT(*) FROM stay_history WHERE DATE(check_out) = CURDATE() AND status = 'Completed'")->fetchColumn();
+    // Basic Stay Statistics — ใช้ค่า denormalized + range (index) แทน subquery/ห่อ DATE()
+    $count_active    = dbg_measure('dash: COUNT active (is_active)', fn() => $pdo->query("SELECT COUNT(*) FROM citizens WHERE is_active = 1")->fetchColumn());
+    $count_today_in  = dbg_measure('dash: check_in วันนี้ (range)', fn() => $pdo->query("SELECT COUNT(*) FROM stay_history WHERE check_in >= CURDATE() AND check_in < CURDATE() + INTERVAL 1 DAY")->fetchColumn());
+    $count_today_out = dbg_measure('dash: check_out วันนี้ (range)', fn() => $pdo->query("SELECT COUNT(*) FROM stay_history WHERE status = 'Completed' AND check_out >= CURDATE() AND check_out < CURDATE() + INTERVAL 1 DAY")->fetchColumn());
 
-    // Vulnerable Groups Statistics (Active Only)
-    $sql_v = "SELECT m.v_name, m.v_color, COUNT(map.citizen_id) as total
+    // Vulnerable Groups Statistics (Active Only) — นับผ่าน citizens.is_active (ตัด join stay_history 3 ทาง)
+    $sql_v = "SELECT m.v_name, m.v_color, COUNT(c.id) as total
               FROM vulnerable_master m
               LEFT JOIN citizen_vulnerable_map map ON m.id = map.v_id
-              LEFT JOIN stay_history h ON map.citizen_id = h.citizen_id AND h.status = 'Active'
+              LEFT JOIN citizens c ON map.citizen_id = c.id AND c.is_active = 1
               GROUP BY m.id";
-    $v_stats = $pdo->query($sql_v)->fetchAll();
+    $v_stats = dbg_measure('dash: vulnerable GROUP BY (is_active)', fn() => $pdo->query($sql_v)->fetchAll());
 
     // Custom Fields Statistics (Active Only - Yes/No fields)
-    $sql_c = "SELECT cm.field_name, COUNT(ccv.citizen_id) as total
+    $sql_c = "SELECT cm.field_name, COUNT(c.id) as total
               FROM custom_field_master cm
               LEFT JOIN citizen_custom_values ccv ON cm.id = ccv.field_id AND ccv.field_value = 'Yes'
-              LEFT JOIN stay_history h ON ccv.citizen_id = h.citizen_id AND h.status = 'Active'
+              LEFT JOIN citizens c ON ccv.citizen_id = c.id AND c.is_active = 1
               WHERE cm.is_active = 1
               GROUP BY cm.id";
-    $custom_stats = $pdo->query($sql_c)->fetchAll();
+    $custom_stats = dbg_measure('dash: custom GROUP BY (is_active)', fn() => $pdo->query($sql_c)->fetchAll());
 
     // Recent Active Residents (Limit 5)
     $sql_recent = "SELECT c.id, c.public_id, c.prefix, c.firstname, c.lastname, c.photo_path, h.check_in, h.location_type
@@ -111,7 +111,7 @@ $nickname = $_SESSION['nickname'] ?? $_SESSION['username'] ?? t('user.anonymous'
                 <div class="col-md-3 col-6">
                     <div class="border rounded p-3 text-center bg-light shadow-sm h-100 border-top-0 border-end-0 border-bottom-0 border-start-4 border-<?php echo $vs['v_color']; ?>">
                         <h6 class="text-muted small mb-2"><?php echo htmlspecialchars($vs['v_name']); ?></h6>
-                        <h3 class="mb-0 text-<?php echo $vs['v_color']; ?> fw-bold"><?php echo $vs['total']; ?></h3>
+                        <h3 class="mb-0 text-<?php echo $vs['v_color']; ?> fw-bold"><?php echo number_format((int)$vs['total']); ?></h3>
                     </div>
                 </div>
                 <?php endforeach; ?>
@@ -120,7 +120,7 @@ $nickname = $_SESSION['nickname'] ?? $_SESSION['username'] ?? t('user.anonymous'
                 <div class="col-md-3 col-6">
                     <div class="border rounded p-3 text-center bg-light shadow-sm h-100 border-start border-success border-4 border-top-0 border-end-0 border-bottom-0">
                         <h6 class="text-muted small mb-2"><?php echo htmlspecialchars($cs['field_name']); ?></h6>
-                        <h3 class="mb-0 text-success fw-bold"><?php echo $cs['total']; ?></h3>
+                        <h3 class="mb-0 text-success fw-bold"><?php echo number_format((int)$cs['total']); ?></h3>
                     </div>
                 </div>
                 <?php endif; endforeach; ?>

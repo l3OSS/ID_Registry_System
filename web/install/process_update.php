@@ -64,6 +64,15 @@ if (!$backup_failed) {
         'pdpa_enabled (สวิตช์ PDPA)'      => fn() => migPdpaToggle($pdo, true),
         'site_url + qr_ip'               => fn() => migSiteUrl($pdo, true),
         'ภูมิลำเนา (citizens.home_*)'      => fn() => migHomeAddress($pdo, true),
+        'สถานะเข้าพัก (is_active/last_stay_at)' => function () use ($pdo) {
+            $msg = migStayDenorm($pdo, true);
+            // backfill สำหรับ DB เดิม (single statement เหมาะกับขนาดปกติ · ข้อมูลจำนวนมากใช้ scripts/migrate_stay_denorm.php)
+            $pdo->exec("UPDATE citizens c
+                LEFT JOIN (SELECT citizen_id, MAX(check_in) AS last_at, MAX(status='Active') AS act
+                           FROM stay_history GROUP BY citizen_id) s ON s.citizen_id = c.id
+                SET c.last_stay_at = s.last_at, c.is_active = COALESCE(s.act, 0)");
+            return $msg . " + backfill สถานะจาก stay_history";
+        },
         'P5+P6 (re-encrypt GCM)'         => fn() => migP5P6Reencrypt($pdo, true),
     ] as $label => $fn) {
         try {

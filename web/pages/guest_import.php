@@ -423,10 +423,14 @@ function imp_process(PDO $pdo, array $file, array $fixed, int $firstSpecialIdx, 
             // แจ้งออกแล้ว → เปิดการเข้าพักอีกครั้ง (Active stay) + คิวไว้ให้เทียบข้อมูล
             try {
                 $pdo->beginTransaction();
+                $reopenCheckIn = imp_normalizeCheckIn($d['check_in']);
                 $pdo->prepare(
                     "INSERT INTO stay_history (citizen_id, check_in, location_type, status, admin_id)
                      VALUES (?, ?, ?, 'Active', ?)"
-                )->execute([$cid, imp_normalizeCheckIn($d['check_in']), imp_mapLocation($d['location_type']), $_SESSION['user_id'] ?? 0]);
+                )->execute([$cid, $reopenCheckIn, imp_mapLocation($d['location_type']), $_SESSION['user_id'] ?? 0]);
+                // denorm: สถานะเข้าพักบน citizens
+                $pdo->prepare("UPDATE citizens SET is_active = 1, last_stay_at = ? WHERE id = ?")
+                    ->execute([$reopenCheckIn, $cid]);
                 $pdo->commit();
                 writeLog($pdo, 'CHECK_IN', "เปิดการเข้าพักอีกครั้ง (นำเข้าไฟล์) ID: $cid");
             } catch (\Throwable $e) {
@@ -474,10 +478,14 @@ function imp_process(PDO $pdo, array $file, array $fixed, int $firstSpecialIdx, 
             imp_writeSpecial($pdo, $cid, $special);
 
             // เช็คอินอัตโนมัติ (Active stay)
+            $newCheckIn = imp_normalizeCheckIn($d['check_in']);
             $pdo->prepare(
                 "INSERT INTO stay_history (citizen_id, check_in, location_type, status, admin_id)
                  VALUES (?, ?, ?, 'Active', ?)"
-            )->execute([$cid, imp_normalizeCheckIn($d['check_in']), imp_mapLocation($d['location_type']), $_SESSION['user_id'] ?? 0]);
+            )->execute([$cid, $newCheckIn, imp_mapLocation($d['location_type']), $_SESSION['user_id'] ?? 0]);
+            // denorm: สถานะเข้าพักบน citizens
+            $pdo->prepare("UPDATE citizens SET is_active = 1, last_stay_at = ? WHERE id = ?")
+                ->execute([$newCheckIn, $cid]);
 
             $pdo->commit();
             $seen[$hash] = true;

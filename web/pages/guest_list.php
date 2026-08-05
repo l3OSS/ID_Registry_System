@@ -77,11 +77,12 @@ if ($is_filtered) {
         }
     }
 
-    // 🔍 กรองสถานะ Active/Inactive
+    // 🔍 กรองสถานะ Active/Inactive — ใช้คอลัมน์ denormalized c.is_active (index idx_active_recent)
+    // แทน subquery บน stay_history ที่ full scan บนข้อมูลจำนวนมาก
     if ($status_filter == 'active') {
-        $conditions[] = "c.id IN (SELECT citizen_id FROM stay_history WHERE status = 'Active')";
+        $conditions[] = "c.is_active = 1";
     } elseif ($status_filter == 'inactive') {
-        $conditions[] = "c.id NOT IN (SELECT citizen_id FROM stay_history WHERE status = 'Active')";
+        $conditions[] = "c.is_active = 0";
     }
 
     // 🔍 กรองกลุ่มเป้าหมายพิเศษ (Vulnerable)
@@ -134,29 +135,59 @@ try {
                   LEFT JOIN address_lookup hl ON c.home_address_id = hl.id
                   $where_sql";
     
+    dbg_start('list: COUNT(DISTINCT) + active subquery');
     $stmt_count = $pdo->prepare($count_sql);
     $stmt_count->execute($params);
     $total_items = (int)$stmt_count->fetchColumn();
     $total_pages = ceil($total_items / $items_per_page);
+    dbg_stop('list: COUNT(DISTINCT) + active subquery');
 
-    // 🔍 2. ส่วนดึงข้อมูล (ตรวจสอบว่า SQL ของคุณมี al.id แล้ว)
-    $sql = "SELECT c.*, 
-                   al.subdistrict AS lookup_tambon, 
-                   al.district AS lookup_amphoe, 
+    // 🔍 2. ส่วนดึงข้อมูล — เรียงด้วยคอลัมน์ denormalized c.last_stay_at (index idx_active_recent)
+    // เดิมใช้ correlated subquery (SELECT MAX(check_in) ...) ต่อทุกแถว → บน 15M ใช้เวลาหลายนาที
+    $sql = "SELECT c.*,
+                   al.subdistrict AS lookup_tambon,
+                   al.district AS lookup_amphoe,
                    al.province AS lookup_province,
                    hl.province AS home_province,
                    TIMESTAMPDIFF(YEAR, c.birthdate, CURDATE()) AS age,
-                   (SELECT MAX(check_in) FROM stay_history WHERE citizen_id = c.id) as last_stay_date
+                   c.last_stay_at AS last_stay_date
             FROM citizens c
             LEFT JOIN address_lookup al ON c.address_id = al.id
             LEFT JOIN address_lookup hl ON c.home_address_id = hl.id
             $where_sql
-            ORDER BY last_stay_date DESC, c.created_at DESC 
+            ORDER BY c.last_stay_at DESC
             LIMIT $items_per_page OFFSET $offset";
+    // หมายเหตุ: เรียงด้วย last_stay_at อย่างเดียว (ตรงกับ index idx_active_recent) —
+    // เพิ่ม tiebreaker c.created_at ที่ไม่อยู่ใน index จะบังคับ filesort ทั้งตาราง (14.5M = ค้าง)
 
+    dbg_start('list: ดึงข้อมูล (ORDER BY last_stay_at)');
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $citizens = $stmt->fetchAll();
+    dbg_stop('list: ดึงข้อมูล (ORDER BY last_stay_at)');
+
+    // ยุบ N+1: ดึงกลุ่มเปราะบาง + ฟิลด์พิเศษ ของทุกแถวในหน้านี้ด้วย query เดียว (เดิม 3 query/แถว)
+    dbg_start('list: batch vulnerable/custom (1 query/ชุด)');
+    $v_by_cid = [];
+    $c_by_cid = [];
+    $page_ids = array_map(fn($r) => (int)$r['id'], $citizens);
+    if ($page_ids) {
+        $in = implode(',', array_fill(0, count($page_ids), '?'));
+        $stmt_v = $pdo->prepare("SELECT map.citizen_id, m.v_name, m.v_color
+                                 FROM citizen_vulnerable_map map
+                                 JOIN vulnerable_master m ON map.v_id = m.id
+                                 WHERE map.citizen_id IN ($in)");
+        $stmt_v->execute($page_ids);
+        foreach ($stmt_v->fetchAll() as $row) { $v_by_cid[(int)$row['citizen_id']][] = $row; }
+
+        $stmt_c = $pdo->prepare("SELECT v.citizen_id, m.field_name
+                                 FROM citizen_custom_values v
+                                 JOIN custom_field_master m ON v.field_id = m.id
+                                 WHERE v.field_value = 'Yes' AND v.citizen_id IN ($in)");
+        $stmt_c->execute($page_ids);
+        foreach ($stmt_c->fetchAll() as $row) { $c_by_cid[(int)$row['citizen_id']][] = $row; }
+    }
+    dbg_stop('list: batch vulnerable/custom (1 query/ชุด)');
     } catch (PDOException $e) {
         error_log("Search Error: " . $e->getMessage());
         $citizens = [];
@@ -316,19 +347,10 @@ $export_query = http_build_query($_GET);
                     $img_src = (!empty($c['photo_path']) && file_exists($c['photo_path'])) ? $c['photo_path'] : "assets/noimg.jpg";
                     $fullname = $c['prefix'] . $c['firstname'] . ' ' . $c['lastname'];
                     
-                    $chk_stmt = $pdo->prepare("SELECT COUNT(*) FROM stay_history WHERE citizen_id = ? AND status = 'Active'");
-                    $chk_stmt->execute([$c['id']]);
-                    $is_staying = $chk_stmt->fetchColumn() > 0;
-
-                    // ดึงกลุ่มเป้าหมายพิเศษ
-                    $stmt_v = $pdo->prepare("SELECT m.v_name, m.v_color FROM citizen_vulnerable_map map JOIN vulnerable_master m ON map.v_id = m.id WHERE map.citizen_id = ?");
-                    $stmt_v->execute([$c['id']]);
-                    $v_items = $stmt_v->fetchAll();
-
-                    // ดึงข้อมูลเสริม (เฉพาะที่เป็น Checkbox และติ๊ก 'Yes')
-                    $stmt_c = $pdo->prepare("SELECT m.field_name FROM citizen_custom_values v JOIN custom_field_master m ON v.field_id = m.id WHERE v.citizen_id = ? AND v.field_value = 'Yes'");
-                    $stmt_c->execute([$c['id']]);
-                    $c_items = $stmt_c->fetchAll();
+                    // สถานะ/กลุ่มพิเศษ อ่านจากค่าที่ denormalize + batch ไว้แล้ว (ไม่มี query ต่อแถว)
+                    $is_staying = (bool)$c['is_active'];
+                    $v_items = $v_by_cid[(int)$c['id']] ?? [];
+                    $c_items = $c_by_cid[(int)$c['id']] ?? [];
                 ?>
                 <tr>
                     <td width="50">

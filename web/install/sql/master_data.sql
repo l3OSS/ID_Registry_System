@@ -7603,6 +7603,8 @@ CREATE TABLE IF NOT EXISTS `citizens` (
   `notes` text,
   `is_consent` tinyint(1) DEFAULT '0',
   `photo_path` varchar(255) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '0' COMMENT 'denorm: 1=มี stay Active (เรียง/กรองหน้ารายชื่อโดยไม่ต้อง subquery)',
+  `last_stay_at` datetime DEFAULT NULL COMMENT 'denorm: MAX(check_in) ของ stay ทั้งหมด',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -7611,7 +7613,8 @@ CREATE TABLE IF NOT EXISTS `citizens` (
   KEY `idx_name` (`firstname`,`lastname`),
   KEY `idx_amphoe` (`addr_amphoe`),
   KEY `idx_province` (`addr_province`),
-  KEY `idx_id_last4` (`id_card_last4`)
+  KEY `idx_id_last4` (`id_card_last4`),
+  KEY `idx_active_recent` (`is_active`,`last_stay_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 ALTER TABLE `citizens` AUTO_INCREMENT = 1;
@@ -7720,7 +7723,8 @@ CREATE TABLE IF NOT EXISTS `stay_history` (
   PRIMARY KEY (`id`),
   KEY `citizen_id` (`citizen_id`),
   KEY `admin_id` (`admin_id`),
-  KEY `status` (`status`)
+  KEY `status` (`status`),
+  KEY `idx_check_in` (`check_in`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
