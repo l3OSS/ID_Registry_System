@@ -14,6 +14,7 @@ require_once __DIR__ . '/../core/log.php';
 require_once __DIR__ . '/../core/functions.php'; // resolveCitizenId (P7)
 require_once __DIR__ . '/../core/lang.php';       // ข้อความทั้งระบบ — POST ตรง ไม่ผ่าน index.php
 require_once __DIR__ . '/../core/csrf.php';       // ไฟล์นี้ถูก POST ตรง ไม่ผ่าน router จึงต้องตรวจเอง
+require_once __DIR__ . '/../core/stats.php';       // ตัวนับแดชบอร์ด (active/กลุ่มเปราะบาง)
 
 // --- 2. Security Check ---
 // ตรวจสอบว่าผู้ใช้มีสิทธิ์เข้าถึงหน้านี้หรือไม่ (ต้อง Login แล้ว)
@@ -64,9 +65,15 @@ if ($stay_id > 0 && $citizen_id > 0) {
             // ✅ SUCCESS
             $_SESSION['success_msg'] = t('checkout.success');
 
+            // ตัวนับแดชบอร์ด: ลบส่วนร่วมเก่า (ตอนนี้ยัง is_active=1) ก่อน recompute
+            statCounterRemove($pdo, (int)$citizen_id);
+
             // denorm: recompute is_active (เผื่อยังมี stay Active อื่นเหลือ) — last_stay_at คงเดิม (ความ recency)
             $pdo->prepare("UPDATE citizens SET is_active = EXISTS(SELECT 1 FROM stay_history WHERE citizen_id = ? AND status = 'Active') WHERE id = ?")
                 ->execute([$citizen_id, $citizen_id]);
+
+            // บวกกลับตามสถานะใหม่ (ถ้ายังมี stay Active อื่นเหลือ = ยังนับ · ถ้าออกหมด = is_active=0 → no-op)
+            statCounterAdd($pdo, (int)$citizen_id);
 
             // 🛡️ Activity Log Entry
             writeLog($pdo, 'CHECK_OUT', "Check-out Guest ID: $citizen_id (Stay Record ID: $stay_id)");

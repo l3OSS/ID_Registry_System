@@ -276,6 +276,22 @@ $flush();
 // ---------- ตั้ง AUTO_INCREMENT ต่อจาก id สุดท้าย ----------
 $pdo->exec("ALTER TABLE citizens AUTO_INCREMENT = " . ($baseId + $TARGET));
 
+// ---------- backfill สถานะ denorm + ตัวนับแดชบอร์ด (ให้ DB พร้อมทดสอบทันที) ----------
+// seed เขียน citizens โดยไม่ตั้ง is_active/last_stay_at → ต้อง backfill จาก stay_history
+echo "backfill is_active/last_stay_at ...\n";
+$tb = microtime(true);
+$pdo->exec("UPDATE citizens c
+    LEFT JOIN (SELECT citizen_id, MAX(check_in) AS last_at, MAX(status='Active') AS act
+               FROM stay_history GROUP BY citizen_id) s ON s.citizen_id = c.id
+    SET c.last_stay_at = s.last_at, c.is_active = COALESCE(s.act, 0)");
+printf("  เสร็จใน %.1f วิ\n", microtime(true) - $tb);
+
+echo "backfill stat_counters ...\n";
+$tb = microtime(true);
+require_once __DIR__ . '/../core/stats.php';
+statRebuildAll($pdo);
+printf("  เสร็จใน %.1f วิ\n", microtime(true) - $tb);
+
 $elapsed = microtime(true) - $startRun;
 echo "\n✅ เสร็จ: สร้าง " . number_format($TARGET) . " คน ใน " . number_format($elapsed, 1) . " วิ"
    . " (" . number_format((int)($TARGET / max(0.001, $elapsed))) . " แถว/วิ)\n";

@@ -247,6 +247,29 @@ function migStayDenorm(PDO $pdo, bool $apply = true): string
 }
 
 /**
+ * stat_counters — summary counter สำหรับแดชบอร์ด (ทำให้ O(1) ทุกขนาดข้อมูล)
+ * สร้างตารางถ้ายังไม่มี · backfill (คำนวณค่าจริง) ทำแยกใน scripts/migrate_stat_counters.php
+ * เพราะเป็น query หนักตัวเดียว (บนข้อมูลจำนวนมากควรรันแบบ CLI ที่ไม่มี time limit)
+ */
+function migStatCounters(PDO $pdo, bool $apply = true): string
+{
+    $has = (bool)$pdo->query(
+        "SELECT COUNT(*) FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stat_counters'"
+    )->fetchColumn();
+
+    if ($has) {
+        return "stat_counters: มีตารางอยู่แล้ว";
+    }
+    if (!$apply) {
+        return "stat_counters: (dry-run) จะสร้างตาราง stat_counters";
+    }
+    require_once __DIR__ . '/stats.php';
+    statEnsureTable($pdo);
+    return "stat_counters: สร้างตารางแล้ว (backfill ด้วย scripts/migrate_stat_counters.php)";
+}
+
+/**
  * P5+P6 — re-hash id_card_hash (domain-separated) + re-encrypt PII เป็น GCM
  * idempotent + integrity check ด้วย id_card_last4 (กันเขียนทับข้อมูลดีด้วยขยะถ้า key เพี้ยน)
  */

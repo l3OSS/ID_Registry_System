@@ -10,6 +10,7 @@ require_once __DIR__ . '/../core/auth.php';
 require_once __DIR__ . '/../core/rbac.php'; // ระบบสิทธิ์แบบ permission
 require_once __DIR__ . '/../core/log.php';
 require_once __DIR__ . '/../core/functions.php'; // resolveCitizenId (P7)
+require_once __DIR__ . '/../core/stats.php';       // ตัวนับแดชบอร์ด (active/กลุ่มเปราะบาง)
 
 // --- 2. Security & Permission Check ---
 requirePermission('guests.delete'); // EngiNear + Admin
@@ -39,6 +40,10 @@ if ($citizen_id > 0) {
                 unlink($file_path); // ลบไฟล์รูปจริงออกจาก Storage
             }
         }
+
+        // ตัวนับแดชบอร์ด: ลบส่วนร่วมของคนนี้ก่อนลบข้อมูล (ต้องอ่าน is_active + แท็กตอน row/map ยังอยู่)
+        // ถ้าคนนี้ inactive อยู่แล้ว = no-op (ไม่ได้ถูกนับ)
+        statCounterRemove($pdo, (int)$citizen_id);
 
         // --- 4. Database Cleanup (Cascading) ---
         // ลบข้อมูลในตารางลูกก่อน (Child Tables)

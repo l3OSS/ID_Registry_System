@@ -7,6 +7,7 @@
 // --- 1. Load Dependencies & Security ---
 require_once 'core/auth.php';
 require_once 'core/functions.php';
+require_once 'core/stats.php'; // ตัวนับสรุป (active/กลุ่มเปราะบาง) — O(1)
 
 // Ensure user is logged in
 checkLogin();
@@ -15,18 +16,19 @@ checkLogin();
  * Optimization: Use a single TRY-CATCH block for database operations
  */
 try {
-    // Basic Stay Statistics — ใช้ค่า denormalized + range (index) แทน subquery/ห่อ DATE()
-    $count_active    = dbg_measure('dash: COUNT active (is_active)', fn() => $pdo->query("SELECT COUNT(*) FROM citizens WHERE is_active = 1")->fetchColumn());
+    // Basic Stay Statistics
+    // active_total อ่านจากตัวนับสรุป stat_counters (O(1)) แทน COUNT(*) 15M แถว (~1.9s worst-case)
+    $count_active    = dbg_measure('dash: active_total (counter)', fn() => statActiveTotal($pdo));
     $count_today_in  = dbg_measure('dash: check_in วันนี้ (range)', fn() => $pdo->query("SELECT COUNT(*) FROM stay_history WHERE check_in >= CURDATE() AND check_in < CURDATE() + INTERVAL 1 DAY")->fetchColumn());
     $count_today_out = dbg_measure('dash: check_out วันนี้ (range)', fn() => $pdo->query("SELECT COUNT(*) FROM stay_history WHERE status = 'Completed' AND check_out >= CURDATE() AND check_out < CURDATE() + INTERVAL 1 DAY")->fetchColumn());
 
-    // Vulnerable Groups Statistics (Active Only) — นับผ่าน citizens.is_active (ตัด join stay_history 3 ทาง)
-    $sql_v = "SELECT m.v_name, m.v_color, COUNT(c.id) as total
+    // Vulnerable Groups Statistics (Active Only)
+    // อ่านจากตัวนับสรุป vuln:<id> (O(1)) แทนการ join+GROUP BY 14M แถว (~27s worst-case)
+    $sql_v = "SELECT m.v_name, m.v_color, COALESCE(sc.cval, 0) AS total
               FROM vulnerable_master m
-              LEFT JOIN citizen_vulnerable_map map ON m.id = map.v_id
-              LEFT JOIN citizens c ON map.citizen_id = c.id AND c.is_active = 1
-              GROUP BY m.id";
-    $v_stats = dbg_measure('dash: vulnerable GROUP BY (is_active)', fn() => $pdo->query($sql_v)->fetchAll());
+              LEFT JOIN stat_counters sc ON sc.ckey = CONCAT('vuln:', m.id)
+              ORDER BY m.id";
+    $v_stats = dbg_measure('dash: vulnerable (counter)', fn() => $pdo->query($sql_v)->fetchAll());
 
     // Custom Fields Statistics (Active Only - Yes/No fields)
     $sql_c = "SELECT cm.field_name, COUNT(c.id) as total

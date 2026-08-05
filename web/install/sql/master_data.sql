@@ -7730,6 +7730,20 @@ CREATE TABLE IF NOT EXISTS `stay_history` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `stat_counters`
+-- Summary counter สำหรับแดชบอร์ด (ทำให้นับผู้พัก active / กลุ่มเปราะบางเป็น O(1) ทุกขนาดข้อมูล)
+-- รักษาค่าที่ write path ผ่าน core/stats.php · fresh install เริ่มว่าง (ยังไม่มีผู้พัก) = ถูกต้อง
+--
+
+CREATE TABLE IF NOT EXISTS `stat_counters` (
+  `ckey` varchar(64) NOT NULL,
+  `cval` bigint NOT NULL DEFAULT 0,
+  PRIMARY KEY (`ckey`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `temp_sync_consent`
 --
 

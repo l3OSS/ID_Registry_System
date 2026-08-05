@@ -73,6 +73,13 @@ if (!$backup_failed) {
                 SET c.last_stay_at = s.last_at, c.is_active = COALESCE(s.act, 0)");
             return $msg . " + backfill สถานะจาก stay_history";
         },
+        'ตัวนับแดชบอร์ด (stat_counters)' => function () use ($pdo) {
+            $msg = migStatCounters($pdo, true);
+            // backfill ค่าจริง (single statement เหมาะกับขนาดปกติ · ข้อมูลจำนวนมากใช้ scripts/migrate_stat_counters.php)
+            require_once dirname(__DIR__) . '/core/stats.php';
+            statRebuildAll($pdo);
+            return $msg . " + backfill ค่าจริง";
+        },
         'P5+P6 (re-encrypt GCM)'         => fn() => migP5P6Reencrypt($pdo, true),
     ] as $label => $fn) {
         try {

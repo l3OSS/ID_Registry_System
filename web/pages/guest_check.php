@@ -12,6 +12,7 @@ require_once __DIR__ . '/../core/functions.php';
 require_once __DIR__ . '/../core/lang.php';   // ข้อความทั้งระบบ — POST ตรง ไม่ผ่าน index.php
 require_once __DIR__ . '/../core/csrf.php';
 require_once __DIR__ . '/../core/tx.php';
+require_once __DIR__ . '/../core/stats.php'; // ตัวนับแดชบอร์ด (active/กลุ่มเปราะบาง)
 
 // เส้นทาง "เขียนข้อมูลจริง" — เดิมตรวจแค่ checkLogin() ผู้ใช้ระดับใดก็ POST เข้ามาได้ (ซ่อนปุ่มในฟอร์มไม่ใช่การป้องกัน)
 requirePermission('guests.register');
@@ -184,6 +185,12 @@ if ($age !== null) {
             }
         }
 
+        // ตัวนับแดชบอร์ด: คนเดิมอาจ active + มีแท็กอยู่แล้ว → ลบส่วนร่วมเก่าออกก่อนแก้สถานะ/แท็ก
+        // (คนใหม่ยัง is_active=0 ยังไม่มีแท็ก → เป็น no-op) จะบวกส่วนร่วมใหม่กลับหลังเขียนเสร็จ
+        if ($old_data) {
+            statCounterRemove($pdo, (int)$citizen_id);
+        }
+
         // จัดการ Mapping (ล้างของเก่าแล้วลงใหม่)
         $pdo->prepare("DELETE FROM citizen_vulnerable_map WHERE citizen_id = ?")->execute([$citizen_id]);
         if (isset($post_data['vulnerable'])) {
@@ -233,6 +240,9 @@ if ($age !== null) {
         }
         // กำลังพักอยู่ แต่มาจากฟอร์ม "เพิ่มข้อมูล" (ลงทะเบียนซ้ำ/อ่านบัตรใหม่) → คงประเภทที่พักเดิมไว้
         // เพราะ dropdown ในฟอร์มเปล่าเป็นค่าเริ่มต้น "พักในศูนย์" ไม่ใช่เจตนาของเจ้าหน้าที่
+
+        // ตัวนับแดชบอร์ด: บวกส่วนร่วมใหม่ (อ่าน is_active + แท็กที่เพิ่งเขียนลงจริง)
+        statCounterAdd($pdo, (int)$citizen_id);
 
         return $citizen_id;
         }); // จบ runInTransaction (commit อัตโนมัติเมื่อสำเร็จ)

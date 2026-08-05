@@ -27,6 +27,8 @@ use PhpOffice\PhpSpreadsheet\Style\{Alignment, Border, Fill};
 
 requirePermission('guests.register');
 
+require_once __DIR__ . '/../core/stats.php'; // ตัวนับแดชบอร์ด (active/กลุ่มเปราะบาง)
+
 // ลำดับช่องคงที่ (0-based ตามตำแหน่งในไฟล์) → ฟิลด์ภายใน · ตำแหน่ง 0 = "ลำดับ" (ข้อมูลอ้างอิง ไม่ใช้)
 $FIXED_FIELDS = [
     1  => 'id_card',        // * จำเป็น
@@ -263,6 +265,8 @@ function imp_buildReopenEntry(array $old, array $d, array $special, int $rowNum)
 function imp_applyNewData(PDO $pdo, int $cid, array $n): bool {
     try {
         $pdo->beginTransaction();
+        // ตัวนับแดชบอร์ด: คนนี้ active อยู่แล้ว (เพิ่ง reopen) → ลบส่วนร่วมเก่า (แท็กเดิม) ก่อนเขียนแท็กใหม่
+        statCounterRemove($pdo, $cid);
         $sets = []; $vals = [];
         $put = function (string $col, $val) use (&$sets, &$vals) {
             if ($val !== null && $val !== '') { $sets[] = "$col = ?"; $vals[] = $val; }
@@ -291,6 +295,8 @@ function imp_applyNewData(PDO $pdo, int $cid, array $n): bool {
         }
         // กลุ่มพิเศษจากไฟล์ (เขียนทับของเดิม)
         imp_writeSpecial($pdo, $cid, $n['special']);
+        // ตัวนับแดชบอร์ด: บวกส่วนร่วมใหม่ (active + แท็กชุดใหม่)
+        statCounterAdd($pdo, $cid);
         $pdo->commit();
         writeLog($pdo, 'IMPORT_RESOLVE', "อัปเดตผู้เข้าพัก ID $cid ด้วยข้อมูลใหม่จากไฟล์นำเข้า (กลับเข้าพัก)");
         return true;
@@ -431,6 +437,9 @@ function imp_process(PDO $pdo, array $file, array $fixed, int $firstSpecialIdx, 
                 // denorm: สถานะเข้าพักบน citizens
                 $pdo->prepare("UPDATE citizens SET is_active = 1, last_stay_at = ? WHERE id = ?")
                     ->execute([$reopenCheckIn, $cid]);
+                // ตัวนับแดชบอร์ด: เพิ่งกลับมา active (แท็กเดิม) → บวกส่วนร่วม
+                // (การแก้แท็กถ้าผู้ใช้กด "ใช้ข้อมูลใหม่" ทำต่อใน imp_applyNewData ซึ่งคร่อม remove/add เอง)
+                statCounterAdd($pdo, $cid);
                 $pdo->commit();
                 writeLog($pdo, 'CHECK_IN', "เปิดการเข้าพักอีกครั้ง (นำเข้าไฟล์) ID: $cid");
             } catch (\Throwable $e) {
@@ -486,6 +495,8 @@ function imp_process(PDO $pdo, array $file, array $fixed, int $firstSpecialIdx, 
             // denorm: สถานะเข้าพักบน citizens
             $pdo->prepare("UPDATE citizens SET is_active = 1, last_stay_at = ? WHERE id = ?")
                 ->execute([$newCheckIn, $cid]);
+            // ตัวนับแดชบอร์ด: คนใหม่ active + มีแท็กแล้ว → บวกส่วนร่วม
+            statCounterAdd($pdo, $cid);
 
             $pdo->commit();
             $seen[$hash] = true;
