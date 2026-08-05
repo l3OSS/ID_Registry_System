@@ -2,6 +2,7 @@
 // pages/guest_list.php
 require_once 'core/security.php';
 require_once 'core/functions.php';
+require_once 'core/stats.php'; // ตัวนับ active_total (O(1)) สำหรับหน้า default
 
 // guard สิทธิ์ฝั่งเซิร์ฟเวอร์ — เดิมอาศัยแค่ซ่อนเมนูใน header (ไม่ใช่การป้องกัน)
 requirePermission('guests.view');
@@ -128,19 +129,31 @@ if ($is_filtered) {
     $where_sql = count($conditions) > 0 ? "WHERE " . implode(" AND ", $conditions) : "";
 
 try {
-    // 🔍 1. ส่วนนับจำนวน (เพิ่ม LEFT JOIN al)
-    $count_sql = "SELECT COUNT(DISTINCT c.id)
-                  FROM citizens c
-                  LEFT JOIN address_lookup al ON c.address_id = al.id
-                  LEFT JOIN address_lookup hl ON c.home_address_id = hl.id
-                  $where_sql";
-    
-    dbg_start('list: COUNT(DISTINCT) + active subquery');
-    $stmt_count = $pdo->prepare($count_sql);
-    $stmt_count->execute($params);
-    $total_items = (int)$stmt_count->fetchColumn();
+    // 🔍 1. ส่วนนับจำนวน (สำหรับ pagination + "พบ X คน" + ปุ่ม export)
+    // การ join address ถูกอ้างเฉพาะตอน "ค้นข้อความ" (al./hl.) — เคสอื่นไม่ต้อง join
+    // และไม่ต้อง DISTINCT เพราะ address_lookup.id เป็น PK (1 citizen จับได้ ≤1 แถว ไม่เพิ่มแถว)
+    $need_addr_join = ($search !== '' && !ctype_digit($search));
+    $count_join = $need_addr_join
+        ? "LEFT JOIN address_lookup al ON c.address_id = al.id
+           LEFT JOIN address_lookup hl ON c.home_address_id = hl.id"
+        : "";
+
+    // มี filter อื่นนอกจากสถานะหรือไม่ (ถ้าไม่มี → นับได้จากตัวนับสรุป O(1))
+    $only_status = ($search === '' && $gender_filter === '' && $age_range === ''
+                    && empty($v_filters) && empty($custom_search) && $search_date === '');
+
+    dbg_start('list: COUNT');
+    if ($only_status && $status_filter === 'active') {
+        // หน้า default (คนกำลังพัก ไม่มี filter อื่น) = อ่านตัวนับ active_total ตรง ๆ
+        $total_items = statActiveTotal($pdo);
+    } else {
+        $count_sql = "SELECT COUNT(*) FROM citizens c $count_join $where_sql";
+        $stmt_count = $pdo->prepare($count_sql);
+        $stmt_count->execute($params);
+        $total_items = (int)$stmt_count->fetchColumn();
+    }
     $total_pages = ceil($total_items / $items_per_page);
-    dbg_stop('list: COUNT(DISTINCT) + active subquery');
+    dbg_stop('list: COUNT');
 
     // 🔍 2. ส่วนดึงข้อมูล — เรียงด้วยคอลัมน์ denormalized c.last_stay_at (index idx_active_recent)
     // เดิมใช้ correlated subquery (SELECT MAX(check_in) ...) ต่อทุกแถว → บน 15M ใช้เวลาหลายนาที
