@@ -45,10 +45,13 @@ if ($is_filtered) {
                 $params[':hash'] = hashID($search);
             } else {
                 $conditions[] = "c.id_card_last4 LIKE :last4";
-                $params[':last4'] = "%$search%";
+                $params[':last4'] = "$search%";
             }
         } else {
-            // ค้นได้ทั้งที่อยู่ตามทะเบียนบ้าน (al) และภูมิลำเนา (hl) — คอลัมน์จังหวัดในตารางแสดงภูมิลำเนาก่อน
+            // ค้นแบบ "ขึ้นต้นด้วย" (prefix) แทน "มีคำนี้" (%..%) — leading wildcard ใช้ index ไม่ได้
+            // บน 15M คำที่ match น้อยจะไล่สแกนทั้งตาราง (ค้าง). prefix ให้ firstname ใช้ idx_name ได้
+            // เคสที่ยังช้า (OR ข้าม lastname/address) มี max_statement_time กันค้างไว้อีกชั้น (ดูด้านล่าง)
+            // ค้นได้ทั้งที่อยู่ตามทะเบียนบ้าน (al) และภูมิลำเนา (hl)
             $conditions[] = "(c.firstname LIKE :q1
                   OR c.lastname LIKE :q2
                   OR al.subdistrict LIKE :q3
@@ -57,9 +60,9 @@ if ($is_filtered) {
                   OR hl.subdistrict LIKE :q6
                   OR hl.district LIKE :q7
                   OR hl.province LIKE :q8)";
-            $params[':q1'] = "%$search%"; $params[':q2'] = "%$search%";
-            $params[':q3'] = "%$search%"; $params[':q4'] = "%$search%"; $params[':q5'] = "%$search%";
-            $params[':q6'] = "%$search%"; $params[':q7'] = "%$search%"; $params[':q8'] = "%$search%";
+            $params[':q1'] = "$search%"; $params[':q2'] = "$search%";
+            $params[':q3'] = "$search%"; $params[':q4'] = "$search%"; $params[':q5'] = "$search%";
+            $params[':q6'] = "$search%"; $params[':q7'] = "$search%"; $params[':q8'] = "$search%";
         }
     }
 
@@ -129,34 +132,41 @@ if ($is_filtered) {
     $where_sql = count($conditions) > 0 ? "WHERE " . implode(" AND ", $conditions) : "";
 
 try {
-    // 🔍 1. ส่วนนับจำนวน (สำหรับ pagination + "พบ X คน" + ปุ่ม export)
-    // การ join address ถูกอ้างเฉพาะตอน "ค้นข้อความ" (al./hl.) — เคสอื่นไม่ต้อง join
-    // และไม่ต้อง DISTINCT เพราะ address_lookup.id เป็น PK (1 citizen จับได้ ≤1 แถว ไม่เพิ่มแถว)
-    $need_addr_join = ($search !== '' && !ctype_digit($search));
-    $count_join = $need_addr_join
-        ? "LEFT JOIN address_lookup al ON c.address_id = al.id
-           LEFT JOIN address_lookup hl ON c.home_address_id = hl.id"
-        : "";
+    // ค้น 13 หลัก = hash (มี index, เร็ว/นับ exact ได้) · ค้นอื่นที่มีข้อความ/เลขบางส่วน = อาจสแกนหนัก
+    $is_hash_search = (ctype_digit($search) && strlen($search) === 13);
+    $guarded_search = ($search !== '' && !$is_hash_search);
+    $count_exact    = !$guarded_search;  // ค้นแบบกันค้าง = ไม่นับ exact (ใช้ has_more แทน)
+    $has_more       = false;
+    $search_timed_out = false;
 
-    // มี filter อื่นนอกจากสถานะหรือไม่ (ถ้าไม่มี → นับได้จากตัวนับสรุป O(1))
+    // 🛡️ กันค้าง/จอขาว: ค้นชื่อ/ที่อยู่แบบ prefix บน 15M เคสที่ match น้อยยังไล่ OR ข้ามคอลัมน์
+    // ที่ไม่มี index ได้ (เคยวัดค้าง 174 วิ) → จำกัดเวลา query ที่ 5 วิ (MariaDB) แล้วแจ้งผู้ใช้ให้ค้นเจาะจงขึ้น
+    if ($guarded_search) {
+        try { $pdo->exec("SET max_statement_time=5"); } catch (\Throwable $e) { /* เฉพาะ MariaDB */ }
+    }
+
+    // 🔍 1. ส่วนนับจำนวน — เฉพาะเคสที่นับได้เร็ว (ไม่ใช่ค้นแบบกันค้าง)
+    // ไม่ต้อง join address / ไม่ต้อง DISTINCT (เมื่อไม่ค้นข้อความ where ไม่อ้าง al./hl. · join 1:1)
     $only_status = ($search === '' && $gender_filter === '' && $age_range === ''
                     && empty($v_filters) && empty($custom_search) && $search_date === '');
 
     dbg_start('list: COUNT');
-    if ($only_status && $status_filter === 'active') {
-        // หน้า default (คนกำลังพัก ไม่มี filter อื่น) = อ่านตัวนับ active_total ตรง ๆ
-        $total_items = statActiveTotal($pdo);
-    } else {
-        $count_sql = "SELECT COUNT(*) FROM citizens c $count_join $where_sql";
-        $stmt_count = $pdo->prepare($count_sql);
-        $stmt_count->execute($params);
-        $total_items = (int)$stmt_count->fetchColumn();
+    if ($count_exact) {
+        if ($only_status && $status_filter === 'active') {
+            // หน้า default (คนกำลังพัก ไม่มี filter อื่น) = อ่านตัวนับสรุป active_total ตรง ๆ (O(1))
+            $total_items = statActiveTotal($pdo);
+        } else {
+            $count_sql = "SELECT COUNT(*) FROM citizens c $where_sql";
+            $stmt_count = $pdo->prepare($count_sql);
+            $stmt_count->execute($params);
+            $total_items = (int)$stmt_count->fetchColumn();
+        }
+        $total_pages = ceil($total_items / $items_per_page);
     }
-    $total_pages = ceil($total_items / $items_per_page);
-    dbg_stop('list: COUNT');
 
     // 🔍 2. ส่วนดึงข้อมูล — เรียงด้วยคอลัมน์ denormalized c.last_stay_at (index idx_active_recent)
-    // เดิมใช้ correlated subquery (SELECT MAX(check_in) ...) ต่อทุกแถว → บน 15M ใช้เวลาหลายนาที
+    // ค้นแบบกันค้าง: ดึง +1 แถวเพื่อรู้ว่ามีหน้าถัดไปไหม (แทนการนับ exact ที่แพง)
+    $fetch_limit = $guarded_search ? $items_per_page + 1 : $items_per_page;
     $sql = "SELECT c.*,
                    al.subdistrict AS lookup_tambon,
                    al.district AS lookup_amphoe,
@@ -169,14 +179,29 @@ try {
             LEFT JOIN address_lookup hl ON c.home_address_id = hl.id
             $where_sql
             ORDER BY c.last_stay_at DESC
-            LIMIT $items_per_page OFFSET $offset";
+            LIMIT $fetch_limit OFFSET $offset";
     // หมายเหตุ: เรียงด้วย last_stay_at อย่างเดียว (ตรงกับ index idx_active_recent) —
     // เพิ่ม tiebreaker c.created_at ที่ไม่อยู่ใน index จะบังคับ filesort ทั้งตาราง (14.5M = ค้าง)
 
     dbg_start('list: ดึงข้อมูล (ORDER BY last_stay_at)');
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $citizens = $stmt->fetchAll();
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $citizens = $stmt->fetchAll();
+    } catch (PDOException $e) {
+        // 1969 = max_statement_time exceeded (คำค้นกว้างเกินไป) → แจ้งผู้ใช้ ไม่ให้จอขาว
+        if ($guarded_search && strpos($e->getMessage(), '1969') !== false) {
+            $search_timed_out = true;
+            $citizens = [];
+        } else {
+            throw $e;
+        }
+    }
+    // มีแถวเกินหน้า → มีหน้าถัดไป (ตัดแถวส่วนเกินทิ้ง)
+    if ($guarded_search && count($citizens) > $items_per_page) {
+        $has_more = true;
+        array_pop($citizens);
+    }
     dbg_stop('list: ดึงข้อมูล (ORDER BY last_stay_at)');
 
     // ยุบ N+1: ดึงกลุ่มเปราะบาง + ฟิลด์พิเศษ ของทุกแถวในหน้านี้ด้วย query เดียว (เดิม 3 query/แถว)
@@ -309,21 +334,34 @@ $export_query = http_build_query($_GET);
     </div>
 </div>
 
-<?php if ($is_filtered): ?>
+<?php if (!empty($search_timed_out)): ?>
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="alert alert-warning d-flex align-items-center shadow-sm border-0 py-2">
+            <i class="bi bi-hourglass-split me-2 fs-5"></i>
+            <div><?php echo e('list.search_too_broad'); ?></div>
+        </div>
+    </div>
+</div>
+<?php elseif ($is_filtered): ?>
 <div class="row mb-3">
     <div class="col-12">
         <div class="alert alert-info d-flex align-items-center shadow-sm border-0 py-2">
             <i class="bi bi-info-circle-fill me-2 fs-5"></i>
+            <?php if ($count_exact): ?>
             <div><?php echo e('list.found_prefix'); ?> <strong><?php echo number_format($total_items); ?></strong> <?php echo e('list.found_suffix'); ?></div>
+            <?php else: ?>
+            <div><?php echo e('list.search_results'); ?> <span class="text-muted">(<?php echo e('list.search_page_hint'); ?>)</span></div>
+            <?php endif; ?>
         </div>
     </div>
 </div>
 <?php endif; ?>
 
 <div class="d-flex justify-content-end mb-3">
-<?php if (userCan('export.excel') && $is_filtered && $total_items > 0): ?>
+<?php if (userCan('export.excel') && $is_filtered && ($total_items > 0 || count($citizens) > 0)): ?>
     <a href="pages/export_excel.php?<?php echo $export_query; ?>" class="btn btn-success btn-sm shadow-sm">
-        <i class="bi bi-file-earmark-excel"></i> <?php echo e('list.export_excel'); ?> (<?php echo $total_items; ?> <?php echo e('common.items_unit'); ?>)
+        <i class="bi bi-file-earmark-excel"></i> <?php echo e('list.export_excel'); ?><?php if ($count_exact): ?> (<?php echo number_format($total_items); ?> <?php echo e('common.items_unit'); ?>)<?php endif; ?>
     </a>
 <?php endif; ?>
 <?php if (userCan('guests.register')): ?>
@@ -454,7 +492,7 @@ function clearDate() {
 
 </div>
 
-    <?php if ($total_pages > 1): ?>
+    <?php if ($count_exact && $total_pages > 1): ?>
     <nav class="mt-4">
         <ul class="pagination pagination-sm justify-content-center">
             <li class="page-item <?php echo ($current_page <= 1) ? 'disabled' : ''; ?>">
@@ -467,6 +505,19 @@ function clearDate() {
             <?php endfor; ?>
             <li class="page-item <?php echo ($current_page >= $total_pages) ? 'disabled' : ''; ?>">
                 <a class="page-link" href="index.php?<?php echo http_build_query(array_merge($_GET, ['p' => $current_page + 1])); ?>"><i class="bi bi-chevron-right"></i></a>
+            </li>
+        </ul>
+    </nav>
+    <?php elseif (!$count_exact && ($current_page > 1 || $has_more)): ?>
+    <?php // ค้นแบบกันค้าง: ไม่นับ exact → ปุ่มก่อนหน้า/ถัดไปแบบง่าย (ถัดไปเปิดเมื่อมีแถวเกินหน้า) ?>
+    <nav class="mt-4">
+        <ul class="pagination pagination-sm justify-content-center">
+            <li class="page-item <?php echo ($current_page <= 1) ? 'disabled' : ''; ?>">
+                <a class="page-link" href="index.php?<?php echo http_build_query(array_merge($_GET, ['p' => $current_page - 1])); ?>"><i class="bi bi-chevron-left"></i> <?php echo e('list.prev_page'); ?></a>
+            </li>
+            <li class="page-item active"><span class="page-link"><?php echo $current_page; ?></span></li>
+            <li class="page-item <?php echo (!$has_more) ? 'disabled' : ''; ?>">
+                <a class="page-link" href="index.php?<?php echo http_build_query(array_merge($_GET, ['p' => $current_page + 1])); ?>"><?php echo e('list.next_page'); ?> <i class="bi bi-chevron-right"></i></a>
             </li>
         </ul>
     </nav>
