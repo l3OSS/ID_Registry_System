@@ -295,6 +295,8 @@ function imp_applyNewData(PDO $pdo, int $cid, array $n): bool {
         }
         // กลุ่มพิเศษจากไฟล์ (เขียนทับของเดิม)
         imp_writeSpecial($pdo, $cid, $n['special']);
+        // dictionary คำนำหน้า (ค้นหา) — best-effort
+        namePrefixRemember($pdo, $n['prefix']);
         // ตัวนับแดชบอร์ด: บวกส่วนร่วมใหม่ (active + แท็กชุดใหม่)
         statCounterAdd($pdo, $cid);
         $pdo->commit();
@@ -482,6 +484,9 @@ function imp_process(PDO $pdo, array $file, array $fixed, int $firstSpecialIdx, 
                 $d['notes'] !== '' ? $d['notes'] : null,
             ]);
             $cid = (int)$pdo->lastInsertId();
+
+            // dictionary คำนำหน้า (ค้นหา) — best-effort
+            namePrefixRemember($pdo, $d['prefix']);
 
             // กลุ่มพิเศษจากไฟล์ + ที่ imp_autoTagByAge() เติมให้ตามอายุ (union แล้วตั้งแต่ตอนอ่านแถว)
             imp_writeSpecial($pdo, $cid, $special);

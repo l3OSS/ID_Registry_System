@@ -32,20 +32,27 @@ $status = $_GET['status'] ?? '';
 $params = [];
 $conditions = [];
 
+// ค้นหา = ตรรกะเดียวกับหน้ารายชื่อ (ตัดคำนำหน้า + arm ชื่อ/สกุล/ที่อยู่) — placeholder positional '?'
+// export ใช้ WHERE เดียว (keyset streaming) จึง OR รวม arm (ไม่ UNION เหมือน guest_list)
 if (!empty($search)) {
     if (ctype_digit($search) && strlen($search) === 13) {
-        $conditions[] = "c.id_card_hash = :hash";
-        $params[':hash'] = hashID($search);
+        $conditions[] = "c.id_card_hash = ?";
+        $params[] = hashID($search);
     } else {
-        // prefix (ขึ้นต้นด้วย) — สอดคล้องกับหน้ารายชื่อ + ใช้ index ได้
-        $conditions[] = "(c.firstname LIKE :q1 OR c.lastname LIKE :q2
-                          OR al.province LIKE :q3 OR hl.province LIKE :q4
-                          OR c.addr_province LIKE :q5)";
-        $params[':q1'] = "$search%"; $params[':q2'] = "$search%"; $params[':q3'] = "$search%";
-        $params[':q4'] = "$search%"; $params[':q5'] = "$search%";
+        $arms = searchTextArms($pdo, $search);
+        if ($arms) {
+            $orParts = [];
+            foreach ($arms as [$asql, $avals]) {
+                $orParts[] = "($asql)";
+                foreach ($avals as $v) $params[] = $v;
+            }
+            $conditions[] = "(" . implode(' OR ', $orParts) . ")";
+        } else {
+            $conditions[] = "1=0"; // คำนำหน้าล้วน / ไม่มี arm → ไม่มีผล
+        }
     }
 }
-if (!empty($gender)) { $conditions[] = "c.gender = :gender"; $params[':gender'] = $gender; }
+if (!empty($gender)) { $conditions[] = "c.gender = ?"; $params[] = $gender; }
 if ($status === 'active')   { $conditions[] = "c.is_active = 1"; }
 if ($status === 'inactive') { $conditions[] = "c.is_active = 0"; }
 
@@ -151,12 +158,10 @@ if ($format === 'csv') {
     $no = 0;
     while (true) {
         $sql = "SELECT $SELECT_COLS $FROM_JOIN
-                " . ($where_sql ? $where_sql . " AND c.id > :lastId" : "WHERE c.id > :lastId") . "
+                " . ($where_sql ? $where_sql . " AND c.id > ?" : "WHERE c.id > ?") . "
                 ORDER BY c.id ASC LIMIT " . CHUNK;
         $stmt = $pdo->prepare($sql);
-        foreach ($params as $k => $v) $stmt->bindValue($k, $v);
-        $stmt->bindValue(':lastId', $lastId, PDO::PARAM_INT);
-        $stmt->execute();
+        $stmt->execute(array_merge($params, [$lastId]));
         $rows = $stmt->fetchAll();
         if (!$rows) break;
 

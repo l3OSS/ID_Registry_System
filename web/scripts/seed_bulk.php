@@ -53,6 +53,7 @@ $TMP_DIR = sys_get_temp_dir() . '/reg_seed_' . getmypid();
 $f_cit  = $TMP_DIR . '/citizens.tsv';
 $f_stay = $TMP_DIR . '/stay.tsv';
 $f_vul  = $TMP_DIR . '/vul.tsv';
+$f_cust = $TMP_DIR . '/cust.tsv';
 register_shutdown_function(function () use ($TMP_DIR) {
     foreach (glob($TMP_DIR . '/*') as $g) @unlink($g);
     @rmdir($TMP_DIR);
@@ -108,6 +109,22 @@ $vulIds = $pdo->query("SELECT id FROM vulnerable_master")->fetchAll(PDO::FETCH_C
 $V_CHILD   = in_array(1, array_map('intval', $vulIds), true) ? 1 : 0;
 $V_ELDERLY = in_array(2, array_map('intval', $vulIds), true) ? 2 : 0;
 
+// ---------- custom fields ที่เปิดใช้งาน (req2: สุ่มค่า "กลุ่มเป้าหมายพิเศษ" ส่วน custom) ----------
+// checkbox → ติ๊ก 'Yes' แบบสุ่ม · text → สุ่มคำจากคลังคำ (ค่ากลุ่มอายุ 0-5/ผู้สูงอายุ ยังตามอายุจริง)
+$custMaster = $pdo->query("SELECT id, field_type FROM custom_field_master WHERE is_active = 1")->fetchAll();
+$CUST_CHECK = []; $CUST_TEXT = [];
+foreach ($custMaster as $cf) {
+    if ($cf['field_type'] === 'text') $CUST_TEXT[] = (int)$cf['id'];
+    else $CUST_CHECK[] = (int)$cf['id'];
+}
+$CUST_VOCAB = [
+    'ต้องการความช่วยเหลือ', 'มีโรคประจำตัว', 'แพ้อาหาร/ยา', 'ตั้งครรภ์',
+    'พิการทางการเคลื่อนไหว', 'ผู้ป่วยติดเตียง', 'ต้องการล่ามภาษา', 'ผู้ดูแลเด็กเล็ก',
+    'ไม่มีผู้ดูแล', 'ต้องการยาประจำ', 'มีสัตว์เลี้ยง', 'ต้องการรถเข็น',
+];
+$CUST_VOCAB_N = count($CUST_VOCAB);
+echo "custom fields = checkbox:" . count($CUST_CHECK) . " · text:" . count($CUST_TEXT) . "\n";
+
 // ---------- admin id สำหรับ stay_history.admin_id (FK → users) ----------
 $adminId = (int)$pdo->query("SELECT id FROM users ORDER BY id ASC LIMIT 1")->fetchColumn();
 if ($adminId === 0) { exit("Error: ไม่มีผู้ใช้ในตาราง users — ติดตั้งระบบให้เสร็จก่อน\n"); }
@@ -124,9 +141,11 @@ if ($FRESH) {
 
 // ---------- ฐาน id (กำหนด id เอง เพื่อผูก stay/map ได้โดยไม่ต้อง query กลับ) ----------
 $baseId = (int)$pdo->query("SELECT COALESCE(MAX(id),0) FROM citizens")->fetchColumn() + 1;
-$basePublic = 1000000000000;   // public_id 13 หลัก (unique: base + n)
-$baseIdCard = 100000000000;    // เลขบัตร: body 12 หลัก (base + n) แล้วต่อ checksum → 13 หลัก
-echo "เริ่มที่ citizens.id = " . number_format($baseId) . "\n\n";
+$basePublic = 1000000000000;   // public_id 13 หลัก (unique: base + seq)
+$baseIdCard = 100000000000;    // เลขบัตร: body 12 หลัก (base + seq) แล้วต่อ checksum → 13 หลัก
+// ลำดับสะสม: เริ่มนับต่อจากจำนวนแถวที่มีอยู่ (baseId-1) เพื่อกัน public_id/เลขบัตรชนกับ seed เดิมเวลาเพิ่มต่อท้าย (ไม่ใช้ --fresh)
+$seqOffset  = $baseId - 1;
+echo "เริ่มที่ citizens.id = " . number_format($baseId) . " (seq offset = " . number_format($seqOffset) . ")\n\n";
 
 /** หลักตรวจ (หลักที่ 13) ของเลขบัตรไทย จาก body 12 หลัก */
 function seed_checkDigit(string $body12): int {
@@ -145,27 +164,30 @@ function seed_tsv($v): string {
 $CIT_COLS  = "(id,public_id,id_card_hash,id_card_enc,id_card_last4,prefix,firstname,lastname,gender,birthdate,phone_enc,addr_number,addr_tambon,addr_amphoe,addr_province,address_id,addr_zipcode,home_same_as_reg,created_at)";
 $STAY_COLS = "(citizen_id,check_in,check_out,location_type,status,admin_id)";
 $VUL_COLS  = "(citizen_id,v_id)";
+$CUST_COLS = "(citizen_id,field_id,field_value)";
 
 $now      = time();
 $startRun = microtime(true);
 $done     = 0;
 
 // buffers (สำหรับ INSERT mode) / ไฟล์ (สำหรับ LOAD mode)
-$bufCit = []; $bufStay = []; $bufVul = [];
-$hCit = $hStay = $hVul = null;
+$bufCit = []; $bufStay = []; $bufVul = []; $bufCust = [];
+$hCit = $hStay = $hVul = $hCust = null;
 
-$openFiles = function () use (&$hCit, &$hStay, &$hVul, $f_cit, $f_stay, $f_vul) {
-    $hCit = fopen($f_cit, 'w'); $hStay = fopen($f_stay, 'w'); $hVul = fopen($f_vul, 'w');
+$openFiles = function () use (&$hCit, &$hStay, &$hVul, &$hCust, $f_cit, $f_stay, $f_vul, $f_cust) {
+    $hCit = fopen($f_cit, 'w'); $hStay = fopen($f_stay, 'w');
+    $hVul = fopen($f_vul, 'w'); $hCust = fopen($f_cust, 'w');
 };
 if ($USE_LOAD) $openFiles();
 
 /** ยิงก้อนปัจจุบันลง DB แล้วเคลียร์ buffer/ไฟล์ */
 $flush = function () use (
-    &$bufCit, &$bufStay, &$bufVul, &$hCit, &$hStay, &$hVul,
-    $USE_LOAD, $pdo, $f_cit, $f_stay, $f_vul, $CIT_COLS, $STAY_COLS, $VUL_COLS, $openFiles
+    &$bufCit, &$bufStay, &$bufVul, &$bufCust, &$hCit, &$hStay, &$hVul, &$hCust,
+    $USE_LOAD, $pdo, $f_cit, $f_stay, $f_vul, $f_cust,
+    $CIT_COLS, $STAY_COLS, $VUL_COLS, $CUST_COLS, $openFiles
 ) {
     if ($USE_LOAD) {
-        fclose($hCit); fclose($hStay); fclose($hVul);
+        fclose($hCit); fclose($hStay); fclose($hVul); fclose($hCust);
         $load = function (string $file, string $table, string $cols) use ($pdo) {
             if (!is_file($file) || filesize($file) === 0) return;
             $p = str_replace('\\', '/', $file);
@@ -178,6 +200,7 @@ $flush = function () use (
         $load($f_cit,  'citizens',                $CIT_COLS);
         $load($f_stay, 'stay_history',            $STAY_COLS);
         $load($f_vul,  'citizen_vulnerable_map',  $VUL_COLS);
+        $load($f_cust, 'citizen_custom_values',   $CUST_COLS);
         $pdo->commit();
         $openFiles();   // เปิดไฟล์ใหม่ (truncate) สำหรับก้อนถัดไป
         return;
@@ -198,16 +221,22 @@ $flush = function () use (
         $sql = "INSERT INTO citizen_vulnerable_map $VUL_COLS VALUES " . implode(',', array_fill(0, count($bufVul), "($ph)"));
         $pdo->prepare($sql)->execute(array_merge(...$bufVul));
     }
-    $bufCit = $bufStay = $bufVul = [];
+    if ($bufCust) {
+        $ph = implode(',', array_fill(0, 3, '?'));
+        $sql = "INSERT INTO citizen_custom_values $CUST_COLS VALUES " . implode(',', array_fill(0, count($bufCust), "($ph)"));
+        $pdo->prepare($sql)->execute(array_merge(...$bufCust));
+    }
+    $bufCit = $bufStay = $bufVul = $bufCust = [];
 };
 
 for ($n = 0; $n < $TARGET; $n++) {
     $id  = $baseId + $n;
-    $pub = (string)($basePublic + $n);
+    $seq = $seqOffset + $n;                             // ลำดับสะสม (กันชนกับ seed เดิม)
+    $pub = (string)($basePublic + $seq);
 
     // เลขบัตร 13 หลัก (checksum ถูก, unique)
-    $body = str_pad((string)($baseIdCard + $n), 12, '0', STR_PAD_LEFT);
-    $body[0] = (string)(($n % 8) + 1);                 // หลักแรก 1-8 (ให้ดูสมจริง)
+    $body = str_pad((string)($baseIdCard + $seq), 12, '0', STR_PAD_LEFT);
+    $body[0] = (string)(($seq % 8) + 1);               // หลักแรก 1-8 (ให้ดูสมจริง)
     $idcard = $body . seed_checkDigit($body);
     $last4  = substr($idcard, -4);
 
@@ -220,6 +249,13 @@ for ($n = 0; $n < $TARGET; $n++) {
     $bMonth = random_int(1, 12);
     $bDay   = random_int(1, 28);
     $birth  = sprintf('%04d-%02d-%02d', $bYear, $bMonth, $bDay);
+
+    // req3: อายุ < 15 ปี → เด็กหญิง/เด็กชาย ตามเพศ · อายุ >= 15 → กันไม่ให้ติดคำนำหน้าเด็กที่ติดมาจาก pool
+    if ($age < 15) {
+        $prefix = ($gender === 'Female') ? 'เด็กหญิง' : 'เด็กชาย';
+    } elseif ($prefix === 'เด็กหญิง' || $prefix === 'เด็กชาย') {
+        $prefix = ($gender === 'Female') ? 'นางสาว' : 'นาย';
+    }
 
     // ที่อยู่จาก address_lookup จริง
     $a = $addrRows[random_int(0, $addrCount - 1)];
@@ -253,13 +289,28 @@ for ($n = 0; $n < $TARGET; $n++) {
         $bufStay[] = [$id, $ts, null, 'Inside', 'Active', $adminId];
     }
 
-    // auto-tag กลุ่มเปราะบางตามอายุ (เหมือน guest_check)
+    // auto-tag กลุ่มเปราะบางตามอายุ (เหมือน guest_check) — req2 ส่วนกลุ่มอายุ = ตามจริง
     if ($age <= 5 && $V_CHILD) {
         if ($USE_LOAD) fwrite($hVul, seed_tsv($id) . "\t" . seed_tsv($V_CHILD) . "\n");
         else $bufVul[] = [$id, $V_CHILD];
     } elseif ($age >= 60 && $V_ELDERLY) {
         if ($USE_LOAD) fwrite($hVul, seed_tsv($id) . "\t" . seed_tsv($V_ELDERLY) . "\n");
         else $bufVul[] = [$id, $V_ELDERLY];
+    }
+
+    // req2: สุ่มค่า custom fields — checkbox ~40% ติ๊ก 'Yes' · text ~35% มีค่าจากคลังคำ
+    foreach ($CUST_CHECK as $fid) {
+        if (random_int(1, 100) <= 40) {
+            if ($USE_LOAD) fwrite($hCust, seed_tsv($id) . "\t" . seed_tsv($fid) . "\t" . seed_tsv('Yes') . "\n");
+            else $bufCust[] = [$id, $fid, 'Yes'];
+        }
+    }
+    foreach ($CUST_TEXT as $fid) {
+        if (random_int(1, 100) <= 35) {
+            $tv = $CUST_VOCAB[random_int(0, $CUST_VOCAB_N - 1)];
+            if ($USE_LOAD) fwrite($hCust, seed_tsv($id) . "\t" . seed_tsv($fid) . "\t" . seed_tsv($tv) . "\n");
+            else $bufCust[] = [$id, $fid, $tv];
+        }
     }
 
     $done++;
@@ -291,6 +342,17 @@ $tb = microtime(true);
 require_once __DIR__ . '/../core/stats.php';
 statRebuildAll($pdo);
 printf("  เสร็จใน %.1f วิ\n", microtime(true) - $tb);
+
+// dictionary คำนำหน้า (ค้นหา) — เก็บคำนำหน้าที่ seed ใช้จริงเข้า name_prefix
+echo "backfill name_prefix ...\n";
+try {
+    $pdo->exec("INSERT IGNORE INTO name_prefix (name)
+                SELECT DISTINCT TRIM(prefix) FROM citizens
+                WHERE prefix IS NOT NULL AND TRIM(prefix) <> ''");
+    echo "  เสร็จ (" . (int)$pdo->query("SELECT COUNT(*) FROM name_prefix")->fetchColumn() . " รายการ)\n";
+} catch (\Throwable $e) {
+    echo "  ข้าม (name_prefix ยังไม่ได้ migrate?): " . $e->getMessage() . "\n";
+}
 
 $elapsed = microtime(true) - $startRun;
 echo "\n✅ เสร็จ: สร้าง " . number_format($TARGET) . " คน ใน " . number_format($elapsed, 1) . " วิ"

@@ -7614,10 +7614,34 @@ CREATE TABLE IF NOT EXISTS `citizens` (
   KEY `idx_amphoe` (`addr_amphoe`),
   KEY `idx_province` (`addr_province`),
   KEY `idx_id_last4` (`id_card_last4`),
-  KEY `idx_active_recent` (`is_active`,`last_stay_at`)
+  KEY `idx_active_recent` (`is_active`,`last_stay_at`),
+  KEY `idx_lastname` (`lastname`),
+  KEY `idx_address_id` (`address_id`),
+  KEY `idx_home_address_id` (`home_address_id`),
+  KEY `idx_birthdate` (`birthdate`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 ALTER TABLE `citizens` AUTO_INCREMENT = 1;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `name_prefix`
+-- dictionary คำนำหน้าชื่อ — ใช้ตัดคำนำหน้าออกจากคำค้น (ค้นหาแบบ UNION-per-arm)
+-- write path (guest_check/guest_import) เพิ่มคำนำหน้าใหม่เองด้วย INSERT IGNORE
+--
+
+CREATE TABLE IF NOT EXISTS `name_prefix` (
+  `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
+  `name` varchar(50) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- คำนำหน้ามาตรฐาน (fresh install ใช้ตัดคำนำหน้าได้ทันทีก่อนมีข้อมูล)
+INSERT IGNORE INTO `name_prefix` (`name`) VALUES
+('นาย'), ('นาง'), ('นางสาว'), ('เด็กชาย'), ('เด็กหญิง'),
+('น.ส.'), ('ด.ช.'), ('ด.ญ.');
 
 -- --------------------------------------------------------
 

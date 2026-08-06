@@ -348,3 +348,148 @@ function resolveCitizenId(PDO $pdo, string $publicId): int {
     $stmt->execute([$publicId]);
     return (int)($stmt->fetchColumn() ?: 0);
 }
+
+/* ================================================================
+ *  ค้นหาผู้พัก (UNION-per-arm) — พอร์ตสถาปัตยกรรมจาก wp-bhikkhu-scholar
+ *  หลักการ: เลี่ยง OR ข้ามคอลัมน์ (full-scan) → แตกเป็น arm ต่อคอลัมน์
+ *  แต่ละ arm ใช้ index ของตัวเอง + LIMIT cap กันคำกว้าง materialize ล้านแถว
+ *  ที่อยู่ resolve บนตารางเล็ก (address_lookup ~7,500 แถว) ก่อน แล้ว IN(ids)
+ * ================================================================ */
+
+/**
+ * แปลงเลขไทย ๐-๙ → อารบิก 0-9 (อักขระอื่นคงเดิม)
+ * จำเป็นก่อน preg_match('/\d/') แบบ non-/u ซึ่งไม่ match เลขไทย
+ */
+function thaiDigitsToArabic(string $s): string {
+    return str_replace(
+        ['๐','๑','๒','๓','๔','๕','๖','๗','๘','๙'],
+        ['0','1','2','3','4','5','6','7','8','9'],
+        $s
+    );
+}
+
+/** เพดานนับผลค้นข้อความ — เกินนี้แสดง "มากกว่า N" (คุมต้นทุน DISTINCT/materialize) */
+if (!defined('SEARCH_COUNT_CAP')) define('SEARCH_COUNT_CAP', 5000);
+
+/**
+ * โหลด dictionary คำนำหน้าชื่อ (ตาราง name_prefix) — ตารางเล็ก, cache ในคำขอเดียว
+ * เรียงจาก "ยาว → สั้น" เพื่อ match longest-first (นางสาว ต้องมาก่อน นาง)
+ * ตารางยังไม่ migrate → คืน [] (ระบบค้นยังทำงาน แค่ไม่ตัดคำนำหน้า)
+ * @return string[]
+ */
+function namePrefixList(PDO $pdo): array {
+    static $cache = null;
+    if ($cache !== null) return $cache;
+    $cache = [];
+    try {
+        $rows = $pdo->query("SELECT name FROM name_prefix")->fetchAll(PDO::FETCH_COLUMN);
+        $seen = [];
+        foreach ($rows as $n) {
+            $n = trim((string)$n);
+            if ($n !== '') $seen[$n] = true;
+        }
+        $cache = array_keys($seen);
+        usort($cache, fn($a, $b) => mb_strlen($b) - mb_strlen($a)); // ยาวก่อน
+    } catch (\Throwable $e) {
+        $cache = []; // ตารางยังไม่มี = ไม่ตัดคำนำหน้า
+    }
+    return $cache;
+}
+
+/**
+ * find-or-create คำนำหน้าใน dictionary (เรียกที่ write path — คำนำหน้าใหม่เพิ่มเองอัตโนมัติ)
+ * best-effort: ตารางยังไม่ migrate / เขียนพลาด ต้องไม่ทำการบันทึกผู้พักล้ม
+ */
+function namePrefixRemember(PDO $pdo, ?string $prefix): void {
+    $prefix = trim((string)$prefix);
+    if ($prefix === '') return;
+    try {
+        $pdo->prepare("INSERT IGNORE INTO name_prefix (name) VALUES (?)")->execute([$prefix]);
+    } catch (\Throwable $e) {
+        error_log("namePrefixRemember: " . $e->getMessage());
+    }
+}
+
+/**
+ * แตกคำค้นเป็น "ลำดับคำ" ที่จะนำไปสร้าง arm — จัดการคำนำหน้าทุกทรง (ขับด้วย dictionary)
+ *   - "นางสาว สมหญิง [ใจดี]" (เว้นวรรค + คำแรกเป็นคำนำหน้าเป๊ะ) → ตัดคำแรกทิ้ง (ปลอดภัย)
+ *   - "นางสาวสมหญิง" (ติดกัน) → เพิ่ม sequence ที่ตัดคำนำหน้าเป็น "arm เสริม" (ไม่ทิ้งของเดิม
+ *     กัน false-strip ชื่อจริงที่บังเอิญขึ้นต้นเหมือนคำนำหน้า — arm ที่ไม่ match ก็แค่คืนว่าง)
+ *   - พิมพ์คำนำหน้าอย่างเดียว ("นาย") → คืน [] (ไม่มีชื่อให้ค้น)
+ * @return array<int,string[]>  ลำดับคำ(แต่ละอันคือ 1 การตีความ)
+ */
+function searchNameSequences(PDO $pdo, string $term): array {
+    $term = trim((string)preg_replace('/\s+/u', ' ', $term));
+    if ($term === '') return [];
+    $words    = explode(' ', $term);
+    $prefixes = namePrefixList($pdo); // longest-first
+
+    // คำแรกเป็นคำนำหน้าเป๊ะ ๆ หรือไม่
+    $firstIsPrefix = in_array($words[0], $prefixes, true);
+
+    if ($firstIsPrefix) {
+        if (count($words) === 1) return []; // คำนำหน้าล้วน = ไม่มีชื่อ
+        return [array_slice($words, 1)];    // ตัดคำแรก → ชื่อ [+สกุล]
+    }
+
+    $seqs = [$words]; // ใช้ตามที่พิมพ์เสมอ
+
+    // เคสติดกัน: คำแรกขึ้นต้นด้วยคำนำหน้า (longest-first) → เพิ่ม sequence ที่ตัดคำนำหน้า
+    foreach ($prefixes as $p) {
+        if (mb_strpos($words[0], $p) === 0 && mb_strlen($words[0]) > mb_strlen($p)) {
+            $rest       = mb_substr($words[0], mb_strlen($p));
+            $newSeq     = $words;
+            $newSeq[0]  = $rest;
+            $seqs[]     = $newSeq;
+            break; // เอาคำนำหน้าที่ยาวสุดพอ
+        }
+    }
+    return $seqs;
+}
+
+/**
+ * resolve id ของ address_lookup ที่ตำบล/อำเภอ/จังหวัด "ขึ้นต้นด้วย" คำค้น
+ * (ตารางเล็ก → prefix search เร็ว · คืน int[] ไปทำ c.address_id IN(...))
+ */
+function resolveAddressIdsByPrefix(PDO $pdo, string $word): array {
+    $word = trim($word);
+    if ($word === '') return [];
+    $like = $word . '%';
+    $st = $pdo->prepare(
+        "SELECT id FROM address_lookup
+         WHERE subdistrict LIKE ? OR district LIKE ? OR province LIKE ?
+         LIMIT 3000"
+    );
+    $st->execute([$like, $like, $like]);
+    return array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+}
+
+/**
+ * สร้าง "arm" ของคำค้นข้อความ — คืน [[sql, [values]], ...] (placeholder positional '?')
+ * ผู้เรียกเอาไป UNION (guest_list) หรือ OR (export) เอง · [] = ไม่มี arm (คำนำหน้าล้วน/ว่าง)
+ *   1 คำ  → firstname / lastname / ที่อยู่ (IN ids)
+ *   ≥2 คำ → firstname(คำแรก) AND lastname(คำสุดท้าย)
+ */
+function searchTextArms(PDO $pdo, string $term): array {
+    $arms = [];
+    foreach (searchNameSequences($pdo, $term) as $seq) {
+        $n = count($seq);
+        if ($n === 0) continue;
+        $w0 = $seq[0];
+        $wl = $seq[$n - 1];
+        if ($n === 1) {
+            $arms[] = ["c.firstname LIKE ?", ["$w0%"]];
+            $arms[] = ["c.lastname LIKE ?",  ["$w0%"]];
+            $ids = resolveAddressIdsByPrefix($pdo, $w0);
+            if ($ids) {
+                $inList = implode(',', $ids); // int ล้วน (จาก DB) — inline ปลอดภัย
+                // NOTE (ค้าง): เวอร์ชันที่ผ่านเทสต์ 23/23 — arm เดียว OR 2 คอลัมน์ (province "เชียงใหม่" ~5.4s
+                // บน worst-case 15M ทุกคน active). ลองแยกเป็น 2 arm แล้วช้าลง (เทสต์ timeout >120s) ยังไม่หาสาเหตุ
+                $arms[] = ["(c.address_id IN ($inList) OR c.home_address_id IN ($inList))", []];
+            }
+        } else {
+            $arms[] = ["(c.firstname LIKE ? AND c.lastname LIKE ?)", ["$w0%", "$wl%"]];
+        }
+    }
+    return $arms;
+}

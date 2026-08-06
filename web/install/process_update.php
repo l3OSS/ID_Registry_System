@@ -64,6 +64,7 @@ if (!$backup_failed) {
         'pdpa_enabled (สวิตช์ PDPA)'      => fn() => migPdpaToggle($pdo, true),
         'site_url + qr_ip'               => fn() => migSiteUrl($pdo, true),
         'ภูมิลำเนา (citizens.home_*)'      => fn() => migHomeAddress($pdo, true),
+        'ค้นหา (name_prefix + index arm)'  => fn() => migNamePrefix($pdo, true),
         'สถานะเข้าพัก (is_active/last_stay_at)' => function () use ($pdo) {
             $msg = migStayDenorm($pdo, true);
             // backfill สำหรับ DB เดิม (single statement เหมาะกับขนาดปกติ · ข้อมูลจำนวนมากใช้ scripts/migrate_stay_denorm.php)

@@ -3,6 +3,7 @@
 require_once 'core/security.php';
 require_once 'core/functions.php';
 require_once 'core/stats.php'; // ตัวนับ active_total (O(1)) สำหรับหน้า default
+require_once __DIR__ . '/partials/guest_pager.php';
 
 // guard สิทธิ์ฝั่งเซิร์ฟเวอร์ — เดิมอาศัยแค่ซ่อนเมนูใน header (ไม่ใช่การป้องกัน)
 requirePermission('guests.view');
@@ -10,7 +11,7 @@ requirePermission('guests.view');
 // --- 1. รับค่าการกรองจาก URL ---
 $search        = isset($_GET['search']) ? trim($_GET['search']) : '';
 $gender_filter = isset($_GET['gender']) ? $_GET['gender'] : '';
-$age_range     = isset($_GET['age_range']) ? trim($_GET['age_range']) : '';
+$age_range     = isset($_GET['age_range']) ? thaiDigitsToArabic(trim($_GET['age_range'])) : ''; // รับเลขไทย → อารบิก
 $status_filter = isset($_GET['status']) ? $_GET['status'] : 'active'; // Default ให้แสดงคนกำลังพัก
 $search_date   = isset($_GET['search_date']) ? trim($_GET['search_date']) : '';
 $v_filters     = isset($_GET['v_filter']) ? $_GET['v_filter'] : [];
@@ -31,198 +32,269 @@ $offset = ($current_page - 1) * $items_per_page;
 
 $params = [];
 $conditions = [];
-$citizens = []; 
+$citizens = [];
+$page_ids = [];   // id ของแถวในหน้านี้ (ทุกเส้นทางผลิตตัวนี้ → hydrate ร่วมจุดเดียว)
 $total_items = 0;
 $total_pages = 0;
 
 // --- 2. สร้างเงื่อนไข SQL Query ---
 if ($is_filtered) {
-    // 🔍 กรองข้อความ ชื่อ/เลขบัตร
-    if (!empty($search)) {
-        if (ctype_digit($search)) {
-            if (strlen($search) == 13) {
-                $conditions[] = "c.id_card_hash = :hash";
-                $params[':hash'] = hashID($search);
-            } else {
-                $conditions[] = "c.id_card_last4 LIKE :last4";
-                $params[':last4'] = "$search%";
-            }
+    // แยกคำค้น "ข้อความ" (มีตัวอักษร) ออกจากคำค้น "เลข" (เลขบัตร) — เส้นทางต่างกัน
+    $search_text    = ($search !== '' && !ctype_digit($search)) ? $search : '';
+    $is_text_search = ($search_text !== '');
+
+    // ---- 2.1 ตัวกรองร่วม (ทุกอย่างยกเว้นคำค้นข้อความ) — placeholder positional '?' ----
+    // ใช้ซ้ำได้ในทุก UNION arm (EMULATE_PREPARES=false ห้าม named ซ้ำ → ใช้ ? แล้ว copy ค่าต่อ arm)
+    $filter_parts = [];
+    $filter_vals  = [];
+
+    // เลขบัตร (เฉพาะตอนค้นเป็นตัวเลข — ไม่ใช่ค้นข้อความ)
+    if ($search !== '' && ctype_digit($search)) {
+        if (strlen($search) === 13) {
+            $filter_parts[] = "c.id_card_hash = ?";
+            $filter_vals[]  = hashID($search);
         } else {
-            // ค้นแบบ "ขึ้นต้นด้วย" (prefix) แทน "มีคำนี้" (%..%) — leading wildcard ใช้ index ไม่ได้
-            // บน 15M คำที่ match น้อยจะไล่สแกนทั้งตาราง (ค้าง). prefix ให้ firstname ใช้ idx_name ได้
-            // เคสที่ยังช้า (OR ข้าม lastname/address) มี max_statement_time กันค้างไว้อีกชั้น (ดูด้านล่าง)
-            // ค้นได้ทั้งที่อยู่ตามทะเบียนบ้าน (al) และภูมิลำเนา (hl)
-            $conditions[] = "(c.firstname LIKE :q1
-                  OR c.lastname LIKE :q2
-                  OR al.subdistrict LIKE :q3
-                  OR al.district LIKE :q4
-                  OR al.province LIKE :q5
-                  OR hl.subdistrict LIKE :q6
-                  OR hl.district LIKE :q7
-                  OR hl.province LIKE :q8)";
-            $params[':q1'] = "$search%"; $params[':q2'] = "$search%";
-            $params[':q3'] = "$search%"; $params[':q4'] = "$search%"; $params[':q5'] = "$search%";
-            $params[':q6'] = "$search%"; $params[':q7'] = "$search%"; $params[':q8'] = "$search%";
+            $filter_parts[] = "c.id_card_last4 LIKE ?";
+            $filter_vals[]  = "$search%";
         }
     }
-
-    // 🔍 กรองเพศ
     if (!empty($gender_filter)) {
-        $conditions[] = "c.gender = :gender";
-        $params[':gender'] = $gender_filter;
+        $filter_parts[] = "c.gender = ?";
+        $filter_vals[]  = $gender_filter;
     }
-
-    // 🔍 กรองอายุ
-    if (!empty($age_range)) {
-        if (preg_match('/^(\d+)-(\d+)$/', $age_range, $matches)) {
-            $conditions[] = "TIMESTAMPDIFF(YEAR, c.birthdate, CURDATE()) BETWEEN :min_age AND :max_age";
-            $params[':min_age'] = $matches[1];
-            $params[':max_age'] = $matches[2];
+    if ($age_range !== '') {
+        $age_lo = $age_hi = null;
+        if (preg_match('/^(\d+)-(\d+)$/', $age_range, $m)) {
+            // ช่วงอายุ "a-b" — เผื่อกรอกกลับด้าน (60-50) ให้สลับเป็น min..max
+            $age_lo = min((int)$m[1], (int)$m[2]);
+            $age_hi = max((int)$m[1], (int)$m[2]);
+        } elseif (preg_match('/^(\d+)$/', $age_range, $m)) {
+            // อายุตายตัวค่าเดียว "50" = อายุ 50 พอดี
+            $age_lo = $age_hi = (int)$m[1];
+        }
+        // ไม่ match ทั้งคู่ (เช่น "-", "50-") → ไม่ filter (ป้อนไม่ครบ)
+        if ($age_lo !== null) {
+            // แปลงอายุ → ช่วงวันเกิด (sargable ใช้ index idx_birthdate) แทน TIMESTAMPDIFF ต่อแถว
+            //   อายุ = N  ⟺  birthdate ∈ [today-(N+1)ปี+1วัน , today-Nปี]  (ให้ผลตรง TIMESTAMPDIFF(YEAR))
+            $today  = new DateTime('today');
+            $bd_hi  = (clone $today)->modify("-{$age_lo} year")->format('Y-m-d');
+            $bd_lo  = (clone $today)->modify('-' . ($age_hi + 1) . ' year')->modify('+1 day')->format('Y-m-d');
+            $filter_parts[] = "c.birthdate BETWEEN ? AND ?";
+            $filter_vals[]  = $bd_lo;
+            $filter_vals[]  = $bd_hi;
         }
     }
-
-    // 🔍 กรองสถานะ Active/Inactive — ใช้คอลัมน์ denormalized c.is_active (index idx_active_recent)
-    // แทน subquery บน stay_history ที่ full scan บนข้อมูลจำนวนมาก
+    // สถานะเข้าพัก — คอลัมน์ denormalized c.is_active (index idx_active_recent)
     if ($status_filter == 'active') {
-        $conditions[] = "c.is_active = 1";
+        $filter_parts[] = "c.is_active = 1";
     } elseif ($status_filter == 'inactive') {
-        $conditions[] = "c.is_active = 0";
+        $filter_parts[] = "c.is_active = 0";
     }
-
-    // 🔍 กรองกลุ่มเป้าหมายพิเศษ (Vulnerable)
+    // กลุ่มเป้าหมายพิเศษ (Vulnerable)
     if (!empty($v_filters)) {
-        $v_placeholders = [];
-        foreach ($v_filters as $idx => $v_id) {
-            $key = ":vid$idx";
-            $v_placeholders[] = $key;
-            $params[$key] = $v_id;
-        }
-        $conditions[] = "EXISTS (SELECT 1 FROM citizen_vulnerable_map map WHERE map.citizen_id = c.id AND map.v_id IN (" . implode(',', $v_placeholders) . "))";
+        $ph = implode(',', array_fill(0, count($v_filters), '?'));
+        $filter_parts[] = "EXISTS (SELECT 1 FROM citizen_vulnerable_map map WHERE map.citizen_id = c.id AND map.v_id IN ($ph))";
+        foreach ($v_filters as $vid) $filter_vals[] = $vid;
     }
-
-    // 🔍 ส่วนตัวกรองอัตโนมัติ (Custom Search Fields)
+    // ตัวกรองอัตโนมัติ (Custom Search Fields)
     if (!empty($custom_search)) {
         foreach ($custom_search as $field_id => $val) {
             if ($val == 'Yes') {
-                $f_key = ":f_id" . $field_id;
-                $v_key = ":f_val" . $field_id;
-                $conditions[] = "EXISTS (
-                    SELECT 1 FROM citizen_custom_values ccv 
-                    WHERE ccv.citizen_id = c.id 
-                    AND ccv.field_id = $f_key 
-                    AND ccv.field_value = $v_key
-                )";
-                $params[$f_key] = $field_id;
-                $params[$v_key] = 'Yes';
+                $filter_parts[] = "EXISTS (SELECT 1 FROM citizen_custom_values ccv WHERE ccv.citizen_id = c.id AND ccv.field_id = ? AND ccv.field_value = ?)";
+                $filter_vals[]  = $field_id;
+                $filter_vals[]  = 'Yes';
+            }
+        }
+    }
+    // วันที่เข้าพัก (ล่าสุด)
+    if (!empty($search_date)) {
+        $filter_parts[] = "EXISTS (SELECT 1 FROM stay_history sh WHERE sh.citizen_id = c.id AND DATE(sh.check_in) = ?)";
+        $filter_vals[]  = $search_date;
+    }
+    $filter_sql = $filter_parts ? implode(' AND ', $filter_parts) : '';
+
+    // ทั้งสองเส้นทางให้ผลนับได้ (ค้นข้อความ = นับ exact ถึง cap แล้วแสดง "มากกว่า N")
+    $count_exact = true;
+    $capped      = false;
+    $too_broad   = false;  // filter กว้างเกิน 5 วิ → โดน max_statement_time ฆ่า (กันจอขาว)
+
+try {
+    if ($is_text_search) {
+        /* ===== เส้นทางค้นข้อความ: UNION-per-arm (พอร์ตจาก wp-bhikkhu-scholar) =====
+         * เลี่ยง OR ข้ามคอลัมน์ (full-scan/timeout) → arm ต่อคอลัมน์ ใช้ index ของตัวเอง
+         * ตัดคำนำหน้าออกจากคำค้นก่อน (dictionary name_prefix) · ที่อยู่ resolve id บนตารางเล็กแล้ว IN()
+         */
+        $arms = searchTextArms($pdo, $search_text);
+
+        if (!$arms) {
+            // คำนำหน้าล้วน / ไม่มี arm → ไม่มีผล
+            $total_items = 0;
+            $total_pages = 0;
+            $page_ids    = [];
+        } else {
+            $cap   = SEARCH_COUNT_CAP;
+            $parts = [];
+            $base  = [];
+            foreach ($arms as [$asql, $avals]) {
+                $w = $filter_sql !== '' ? "$filter_sql AND ($asql)" : "($asql)";
+                // LIMIT ต่อ arm = cap → คำกว้างไม่ materialize ล้านแถว (ต้องครอบวงเล็บใน UNION)
+                $parts[] = "(SELECT c.id, c.last_stay_at FROM citizens c WHERE $w LIMIT $cap)";
+                $base    = array_merge($base, $filter_vals, $avals);
+            }
+            $union_all = implode(' UNION ALL ', $parts); // probe + pool (bounded ต่อ arm)
+            $union     = implode(' UNION ', $parts);      // exact count (distinct ≤ cap/arm)
+
+            // นับแบบ cap: probe เร็ว (UNION ALL + LIMIT cap+1) รู้ว่าเกินเพดานไหม
+            dbg_start('list: COUNT (probe)');
+            $probeSql = "SELECT COUNT(*) FROM ( $union_all LIMIT " . ($cap + 1) . " ) c";
+            $st = $pdo->prepare($probeSql);
+            $st->execute($base);
+            $probe = (int)$st->fetchColumn();
+            if ($probe > $cap) {
+                $total_items = $cap;   // เกินเพดาน → แสดง "มากกว่า N"
+                $capped      = true;
+            } else {
+                $st = $pdo->prepare("SELECT COUNT(*) FROM ( $union ) u");
+                $st->execute($base);
+                $total_items = (int)$st->fetchColumn();
+            }
+            $total_pages = (int)ceil($total_items / $items_per_page);
+            dbg_stop('list: COUNT (probe)');
+
+            // id ของหน้านี้ — pool = cap แถว (UNION ALL หยุดไว) แล้ว DISTINCT + เรียงตามความใหม่
+            // (ผลไม่เกิน cap → pool ครบ = เรียงเป๊ะ · เกิน cap → cap แรก = เรียงโดยประมาณ)
+            dbg_start('list: ดึง id หน้า');
+            $idSql = "SELECT id FROM (
+                        SELECT DISTINCT id, last_stay_at FROM ( $union_all LIMIT $cap ) ua
+                      ) d
+                      ORDER BY last_stay_at DESC
+                      LIMIT $items_per_page OFFSET $offset";
+            $st = $pdo->prepare($idSql);
+            $st->execute($base);
+            $page_ids = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+            dbg_stop('list: ดึง id หน้า');
+            // hydrate ร่วมหลัง if/else (ใช้ $page_ids)
+        }
+    } else {
+        /* ===== เส้นทางไม่มีคำค้นข้อความ (ว่าง / เลขบัตร / filter dropdown) =====
+         * A. exact/fast — active-only (O(1)) | เลขบัตร 13 หลัก (equality) → นับ exact + เรียงตรง index
+         * B. capped     — filter อื่น ๆ → probe+pool เหมือนค้นข้อความ + guard กันค้าง (max_statement_time)
+         */
+        $where_sql = $filter_sql !== '' ? "WHERE $filter_sql" : "";
+
+        // fast-path: หน้า default (คนกำลังพัก ไม่มี filter อื่น) = อ่านตัวนับสรุป O(1)
+        $only_status    = ($search === '' && $gender_filter === '' && $age_range === ''
+                           && empty($v_filters) && empty($custom_search) && $search_date === '');
+        $is_hash_search = ($search !== '' && ctype_digit($search) && strlen($search) === 13);
+        $is_exact_fast  = ($only_status && $status_filter === 'active') || $is_hash_search;
+
+        // กันค้าง: query เกิน 5 วิ ถูกฆ่า (โยน 1969) → แจ้ง "เงื่อนไขกว้างเกินไป" แทนจอขาว
+        try { $pdo->exec("SET max_statement_time=5"); } catch (\Throwable $e) { /* เฉพาะ MariaDB */ }
+
+        if ($is_exact_fast) {
+            // ----- A. exact/fast (นับตรง index/PK ได้เร็ว) -----
+            dbg_start('list: COUNT');
+            if ($only_status && $status_filter === 'active') {
+                $total_items = statActiveTotal($pdo);           // O(1)
+            } else {
+                $cst = $pdo->prepare("SELECT COUNT(*) FROM citizens c $where_sql");
+                $cst->execute($filter_vals);
+                $total_items = (int)$cst->fetchColumn();
+            }
+            $total_pages = (int)ceil($total_items / $items_per_page);
+            dbg_stop('list: COUNT');
+
+            // เรียง last_stay_at อย่างเดียว (ตรง index idx_active_recent) — tiebreaker นอก index = filesort 14.5M
+            dbg_start('list: ดึง id หน้า');
+            $idSql = "SELECT c.id FROM citizens c $where_sql
+                      ORDER BY c.last_stay_at DESC
+                      LIMIT $items_per_page OFFSET $offset";
+            $st = $pdo->prepare($idSql);
+            $st->execute($filter_vals);
+            $page_ids = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+            dbg_stop('list: ดึง id หน้า');
+        } else {
+            // ----- B. capped: probe+pool (filter dropdown / inactive / all / last4-prefix) -----
+            $cap = SEARCH_COUNT_CAP;
+            try {
+                // probe: หยุดที่ cap+1 → รู้ว่าเกินเพดานไหมโดยไม่นับ matches มหาศาล
+                dbg_start('list: COUNT (probe)');
+                $probeSql = "SELECT COUNT(*) FROM (SELECT c.id FROM citizens c $where_sql LIMIT " . ($cap + 1) . ") x";
+                $st = $pdo->prepare($probeSql);
+                $st->execute($filter_vals);
+                $probe = (int)$st->fetchColumn();
+                if ($probe > $cap) { $total_items = $cap; $capped = true; }
+                else               { $total_items = $probe; }
+                $total_pages = (int)ceil($total_items / $items_per_page);
+                dbg_stop('list: COUNT (probe)');
+
+                // pool = cap แถวใหม่สุด (ORDER ก่อน LIMIT) แล้วเลือกหน้า (เกิน cap = เรียงโดยประมาณ)
+                dbg_start('list: ดึง id หน้า');
+                $idSql = "SELECT id FROM (
+                            SELECT c.id, c.last_stay_at FROM citizens c $where_sql
+                            ORDER BY c.last_stay_at DESC LIMIT $cap
+                          ) d
+                          ORDER BY last_stay_at DESC
+                          LIMIT $items_per_page OFFSET $offset";
+                $st = $pdo->prepare($idSql);
+                $st->execute($filter_vals);
+                $page_ids = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+                dbg_stop('list: ดึง id หน้า');
+            } catch (PDOException $e) {
+                if ((int)($e->errorInfo[1] ?? 0) === 1969) {   // ER_STATEMENT_TIMEOUT (MariaDB)
+                    $too_broad   = true;
+                    $count_exact = false;
+                    $total_items = 0;
+                    $total_pages = 0;
+                    $page_ids    = [];
+                } else {
+                    throw $e;
+                }
             }
         }
     }
 
-    // 🔍 กรองจากวันที่เข้าพัก (ล่าสุด)
-    if (!empty($search_date)) {
-        // ใช้ Subquery ตรวจสอบว่าคนๆ นี้มีประวัติเข้าพักในวันที่เลือกหรือไม่
-        $conditions[] = "EXISTS (
-        SELECT 1 FROM stay_history sh 
-        WHERE sh.citizen_id = c.id 
-        AND DATE(sh.check_in) = :search_date
-        )";
-        $params[':search_date'] = $search_date;
+    // hydrate ร่วมทุกเส้นทาง: JOIN address เฉพาะ id ของหน้านี้ (≤ items_per_page แถว) + คงลำดับด้วย FIELD()
+    dbg_start('list: hydrate หน้า');
+    if (!empty($page_ids)) {
+        $inList = implode(',', $page_ids); // int ล้วน (จาก DB) — inline ปลอดภัย
+        $hsql = "SELECT c.*,
+                        al.subdistrict AS lookup_tambon,
+                        al.district AS lookup_amphoe,
+                        al.province AS lookup_province,
+                        hl.province AS home_province,
+                        TIMESTAMPDIFF(YEAR, c.birthdate, CURDATE()) AS age,
+                        c.last_stay_at AS last_stay_date
+                 FROM citizens c
+                 LEFT JOIN address_lookup al ON c.address_id = al.id
+                 LEFT JOIN address_lookup hl ON c.home_address_id = hl.id
+                 WHERE c.id IN ($inList)
+                 ORDER BY FIELD(c.id, $inList)";
+        $citizens = $pdo->query($hsql)->fetchAll();
+    } else {
+        $citizens = [];
     }
-
-    $where_sql = count($conditions) > 0 ? "WHERE " . implode(" AND ", $conditions) : "";
-
-try {
-    // ค้น 13 หลัก = hash (มี index, เร็ว/นับ exact ได้) · ค้นอื่นที่มีข้อความ/เลขบางส่วน = อาจสแกนหนัก
-    $is_hash_search = (ctype_digit($search) && strlen($search) === 13);
-    $guarded_search = ($search !== '' && !$is_hash_search);
-    $count_exact    = !$guarded_search;  // ค้นแบบกันค้าง = ไม่นับ exact (ใช้ has_more แทน)
-    $has_more       = false;
-    $search_timed_out = false;
-
-    // 🛡️ กันค้าง/จอขาว: ค้นชื่อ/ที่อยู่แบบ prefix บน 15M เคสที่ match น้อยยังไล่ OR ข้ามคอลัมน์
-    // ที่ไม่มี index ได้ (เคยวัดค้าง 174 วิ) → จำกัดเวลา query ที่ 5 วิ (MariaDB) แล้วแจ้งผู้ใช้ให้ค้นเจาะจงขึ้น
-    if ($guarded_search) {
-        try { $pdo->exec("SET max_statement_time=5"); } catch (\Throwable $e) { /* เฉพาะ MariaDB */ }
-    }
-
-    // 🔍 1. ส่วนนับจำนวน — เฉพาะเคสที่นับได้เร็ว (ไม่ใช่ค้นแบบกันค้าง)
-    // ไม่ต้อง join address / ไม่ต้อง DISTINCT (เมื่อไม่ค้นข้อความ where ไม่อ้าง al./hl. · join 1:1)
-    $only_status = ($search === '' && $gender_filter === '' && $age_range === ''
-                    && empty($v_filters) && empty($custom_search) && $search_date === '');
-
-    dbg_start('list: COUNT');
-    if ($count_exact) {
-        if ($only_status && $status_filter === 'active') {
-            // หน้า default (คนกำลังพัก ไม่มี filter อื่น) = อ่านตัวนับสรุป active_total ตรง ๆ (O(1))
-            $total_items = statActiveTotal($pdo);
-        } else {
-            $count_sql = "SELECT COUNT(*) FROM citizens c $where_sql";
-            $stmt_count = $pdo->prepare($count_sql);
-            $stmt_count->execute($params);
-            $total_items = (int)$stmt_count->fetchColumn();
-        }
-        $total_pages = ceil($total_items / $items_per_page);
-    }
-
-    // 🔍 2. ส่วนดึงข้อมูล — เรียงด้วยคอลัมน์ denormalized c.last_stay_at (index idx_active_recent)
-    // ค้นแบบกันค้าง: ดึง +1 แถวเพื่อรู้ว่ามีหน้าถัดไปไหม (แทนการนับ exact ที่แพง)
-    $fetch_limit = $guarded_search ? $items_per_page + 1 : $items_per_page;
-    $sql = "SELECT c.*,
-                   al.subdistrict AS lookup_tambon,
-                   al.district AS lookup_amphoe,
-                   al.province AS lookup_province,
-                   hl.province AS home_province,
-                   TIMESTAMPDIFF(YEAR, c.birthdate, CURDATE()) AS age,
-                   c.last_stay_at AS last_stay_date
-            FROM citizens c
-            LEFT JOIN address_lookup al ON c.address_id = al.id
-            LEFT JOIN address_lookup hl ON c.home_address_id = hl.id
-            $where_sql
-            ORDER BY c.last_stay_at DESC
-            LIMIT $fetch_limit OFFSET $offset";
-    // หมายเหตุ: เรียงด้วย last_stay_at อย่างเดียว (ตรงกับ index idx_active_recent) —
-    // เพิ่ม tiebreaker c.created_at ที่ไม่อยู่ใน index จะบังคับ filesort ทั้งตาราง (14.5M = ค้าง)
-
-    dbg_start('list: ดึงข้อมูล (ORDER BY last_stay_at)');
-    try {
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $citizens = $stmt->fetchAll();
-    } catch (PDOException $e) {
-        // 1969 = max_statement_time exceeded (คำค้นกว้างเกินไป) → แจ้งผู้ใช้ ไม่ให้จอขาว
-        if ($guarded_search && strpos($e->getMessage(), '1969') !== false) {
-            $search_timed_out = true;
-            $citizens = [];
-        } else {
-            throw $e;
-        }
-    }
-    // มีแถวเกินหน้า → มีหน้าถัดไป (ตัดแถวส่วนเกินทิ้ง)
-    if ($guarded_search && count($citizens) > $items_per_page) {
-        $has_more = true;
-        array_pop($citizens);
-    }
-    dbg_stop('list: ดึงข้อมูล (ORDER BY last_stay_at)');
+    dbg_stop('list: hydrate หน้า');
 
     // ยุบ N+1: ดึงกลุ่มเปราะบาง + ฟิลด์พิเศษ ของทุกแถวในหน้านี้ด้วย query เดียว (เดิม 3 query/แถว)
     dbg_start('list: batch vulnerable/custom (1 query/ชุด)');
     $v_by_cid = [];
     $c_by_cid = [];
-    $page_ids = array_map(fn($r) => (int)$r['id'], $citizens);
-    if ($page_ids) {
-        $in = implode(',', array_fill(0, count($page_ids), '?'));
+    $page_ids2 = array_map(fn($r) => (int)$r['id'], $citizens);
+    if ($page_ids2) {
+        $in = implode(',', array_fill(0, count($page_ids2), '?'));
         $stmt_v = $pdo->prepare("SELECT map.citizen_id, m.v_name, m.v_color
                                  FROM citizen_vulnerable_map map
                                  JOIN vulnerable_master m ON map.v_id = m.id
                                  WHERE map.citizen_id IN ($in)");
-        $stmt_v->execute($page_ids);
+        $stmt_v->execute($page_ids2);
         foreach ($stmt_v->fetchAll() as $row) { $v_by_cid[(int)$row['citizen_id']][] = $row; }
 
         $stmt_c = $pdo->prepare("SELECT v.citizen_id, m.field_name
                                  FROM citizen_custom_values v
                                  JOIN custom_field_master m ON v.field_id = m.id
                                  WHERE v.field_value = 'Yes' AND v.citizen_id IN ($in)");
-        $stmt_c->execute($page_ids);
+        $stmt_c->execute($page_ids2);
         foreach ($stmt_c->fetchAll() as $row) { $c_by_cid[(int)$row['citizen_id']][] = $row; }
     }
     dbg_stop('list: batch vulnerable/custom (1 query/ชุด)');
@@ -234,7 +306,17 @@ try {
 
 $v_master = $pdo->query("SELECT * FROM vulnerable_master ORDER BY id ASC")->fetchAll();
 $export_query = http_build_query($_GET);
+
+// แถบแบ่งหน้า (พอร์ตรูปแบบจาก wp-bhikkhu-scholar เหมือน Sec) — เรนเดอร์ครั้งเดียว ใช้ทั้งบน (ในกล่องสรุปผล) และล่าง (แถวเดียวกับดร็อบดาว)
+$pagerHtml = guestPagerHtml($_GET, $current_page, (int)$total_pages, $count_exact, false);
 ?>
+
+<style>
+/* แถบแบ่งหน้า guest_list (พอร์ตเลย์เอาต์จาก wp-bhikkhu-scholar) — สรุปผล/ดร็อบดาวซ้าย ดันแบ่งหน้าไปขวา */
+.gl-pager{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gl-page-jump{width:auto}
+.gl-page-jump .gl-page-input{flex:0 0 62px;width:62px;text-align:center}
+</style>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h3 class="fw-bold"><i class="bi bi-people-fill text-primary"></i> <?php echo e('list.title'); ?></h3>
@@ -273,7 +355,7 @@ $export_query = http_build_query($_GET);
 
             <div class="col-md-2">
                 <label class="small text-muted fw-bold"><?php echo e('list.age_range'); ?></label>
-                <input type="text" name="age_range" class="form-control" placeholder="<?php echo e('list.age_range_ph'); ?>" value="<?php echo htmlspecialchars($age_range); ?>">
+                <input type="text" name="age_range" id="age_range_input" class="form-control" inputmode="numeric" placeholder="<?php echo e('list.age_range_ph'); ?>" value="<?php echo htmlspecialchars($age_range); ?>">
             </div>
             
             <div class="col-md-2 d-flex align-items-end gap-2">
@@ -334,34 +416,37 @@ $export_query = http_build_query($_GET);
     </div>
 </div>
 
-<?php if (!empty($search_timed_out)): ?>
+<?php if ($is_filtered): ?>
 <div class="row mb-3">
     <div class="col-12">
+        <?php if (!empty($too_broad)): ?>
         <div class="alert alert-warning d-flex align-items-center shadow-sm border-0 py-2">
-            <i class="bi bi-hourglass-split me-2 fs-5"></i>
-            <div><?php echo e('list.search_too_broad'); ?></div>
+            <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
+            <div><?php echo e('list.filter_too_broad'); ?></div>
         </div>
-    </div>
-</div>
-<?php elseif ($is_filtered): ?>
-<div class="row mb-3">
-    <div class="col-12">
-        <div class="alert alert-info d-flex align-items-center shadow-sm border-0 py-2">
-            <i class="bi bi-info-circle-fill me-2 fs-5"></i>
-            <?php if ($count_exact): ?>
-            <div><?php echo e('list.found_prefix'); ?> <strong><?php echo number_format($total_items); ?></strong> <?php echo e('list.found_suffix'); ?></div>
-            <?php else: ?>
-            <div><?php echo e('list.search_results'); ?> <span class="text-muted">(<?php echo e('list.search_page_hint'); ?>)</span></div>
+        <?php else: ?>
+        <div class="alert alert-info d-flex align-items-center flex-wrap gap-2 shadow-sm border-0 py-2">
+            <div class="d-flex align-items-center">
+                <i class="bi bi-info-circle-fill me-2 fs-5"></i>
+                <?php if (!empty($capped)): ?>
+                <div><?php echo e('list.found_prefix'); ?> <strong><?php echo e('list.more_than'); ?> <?php echo number_format(SEARCH_COUNT_CAP); ?></strong> <?php echo e('list.found_suffix'); ?></div>
+                <?php else: ?>
+                <div><?php echo e('list.found_prefix'); ?> <strong><?php echo number_format($total_items); ?></strong> <?php echo e('list.found_suffix'); ?></div>
+                <?php endif; ?>
+            </div>
+            <?php if ($pagerHtml !== ''): ?>
+            <div class="ms-auto"><?php echo $pagerHtml; ?></div>
             <?php endif; ?>
         </div>
+        <?php endif; ?>
     </div>
 </div>
 <?php endif; ?>
 
 <div class="d-flex justify-content-end mb-3">
 <?php if (userCan('export.excel') && $is_filtered && ($total_items > 0 || count($citizens) > 0)): ?>
-    <a href="pages/export_excel.php?<?php echo $export_query; ?>" class="btn btn-success btn-sm shadow-sm">
-        <i class="bi bi-file-earmark-excel"></i> <?php echo e('list.export_excel'); ?><?php if ($count_exact): ?> (<?php echo number_format($total_items); ?> <?php echo e('common.items_unit'); ?>)<?php endif; ?>
+    <a href="pages/export_excel.php?<?php echo $export_query; ?>" class="btn btn-success btn-sm shadow-sm" title="<?php echo e('list.export_all_hint'); ?>">
+        <i class="bi bi-file-earmark-excel"></i> <?php echo e('list.export_excel'); ?><?php if (!empty($capped)): ?> (<?php echo e('list.export_all'); ?>)<?php elseif ($count_exact): ?> (<?php echo number_format($total_items); ?> <?php echo e('common.items_unit'); ?>)<?php endif; ?>
     </a>
 <?php endif; ?>
 <?php if (userCan('guests.register')): ?>
@@ -465,14 +550,19 @@ $export_query = http_build_query($_GET);
         </tbody>
     </table>
 
-    <div class="d-flex justify-content-end mb-3">
-        <select class="form-select form-select-sm" style="width: auto;" onchange="changeLimit(this.value)">
-            <option value="50" <?php echo ($items_per_page == 50) ? 'selected' : ''; ?>>50 <?php echo e('common.items_unit'); ?></option>
-            <option value="100" <?php echo ($items_per_page == 100) ? 'selected' : ''; ?>>100 <?php echo e('common.items_unit'); ?></option>
-            <option value="500" <?php echo ($items_per_page == 500) ? 'selected' : ''; ?>>500 <?php echo e('common.items_unit'); ?></option>
-            <option value="1000" <?php echo ($items_per_page == 1000) ? 'selected' : ''; ?>>1000 <?php echo e('common.items_unit'); ?></option>
-        </select>
-        <a href="#" id="back-to-top" class="text-muted fs-2" style="margin-left: 12px;"><i class="bi bi-arrow-up-circle-fill"></i></a>
+    <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+        <?php if ($pagerHtml !== ''): ?>
+            <?php echo $pagerHtml; ?>
+        <?php endif; ?>
+        <div class="d-flex align-items-center ms-auto">
+            <select class="form-select form-select-sm" style="width: auto;" onchange="changeLimit(this.value)">
+                <option value="50" <?php echo ($items_per_page == 50) ? 'selected' : ''; ?>>50 <?php echo e('common.items_unit'); ?></option>
+                <option value="100" <?php echo ($items_per_page == 100) ? 'selected' : ''; ?>>100 <?php echo e('common.items_unit'); ?></option>
+                <option value="500" <?php echo ($items_per_page == 500) ? 'selected' : ''; ?>>500 <?php echo e('common.items_unit'); ?></option>
+                <option value="1000" <?php echo ($items_per_page == 1000) ? 'selected' : ''; ?>>1000 <?php echo e('common.items_unit'); ?></option>
+            </select>
+            <a href="#" id="back-to-top" class="text-muted fs-2" style="margin-left: 12px;"><i class="bi bi-arrow-up-circle-fill"></i></a>
+        </div>
     </div>
 
 <script>
@@ -492,36 +582,7 @@ function clearDate() {
 
 </div>
 
-    <?php if ($count_exact && $total_pages > 1): ?>
-    <nav class="mt-4">
-        <ul class="pagination pagination-sm justify-content-center">
-            <li class="page-item <?php echo ($current_page <= 1) ? 'disabled' : ''; ?>">
-                <a class="page-link" href="index.php?<?php echo http_build_query(array_merge($_GET, ['p' => $current_page - 1])); ?>"><i class="bi bi-chevron-left"></i></a>
-            </li>
-            <?php for ($i = max(1, $current_page - 2); $i <= min($total_pages, max(1, $current_page - 2) + 4); $i++): ?>
-            <li class="page-item <?php echo ($i == $current_page) ? 'active' : ''; ?>">
-                <a class="page-link" href="index.php?<?php echo http_build_query(array_merge($_GET, ['p' => $i])); ?>"><?php echo $i; ?></a>
-            </li>
-            <?php endfor; ?>
-            <li class="page-item <?php echo ($current_page >= $total_pages) ? 'disabled' : ''; ?>">
-                <a class="page-link" href="index.php?<?php echo http_build_query(array_merge($_GET, ['p' => $current_page + 1])); ?>"><i class="bi bi-chevron-right"></i></a>
-            </li>
-        </ul>
-    </nav>
-    <?php elseif (!$count_exact && ($current_page > 1 || $has_more)): ?>
-    <?php // ค้นแบบกันค้าง: ไม่นับ exact → ปุ่มก่อนหน้า/ถัดไปแบบง่าย (ถัดไปเปิดเมื่อมีแถวเกินหน้า) ?>
-    <nav class="mt-4">
-        <ul class="pagination pagination-sm justify-content-center">
-            <li class="page-item <?php echo ($current_page <= 1) ? 'disabled' : ''; ?>">
-                <a class="page-link" href="index.php?<?php echo http_build_query(array_merge($_GET, ['p' => $current_page - 1])); ?>"><i class="bi bi-chevron-left"></i> <?php echo e('list.prev_page'); ?></a>
-            </li>
-            <li class="page-item active"><span class="page-link"><?php echo $current_page; ?></span></li>
-            <li class="page-item <?php echo (!$has_more) ? 'disabled' : ''; ?>">
-                <a class="page-link" href="index.php?<?php echo http_build_query(array_merge($_GET, ['p' => $current_page + 1])); ?>"><?php echo e('list.next_page'); ?> <i class="bi bi-chevron-right"></i></a>
-            </li>
-        </ul>
-    </nav>
-    <?php endif; ?>
+    <?php // แถบแบ่งหน้าล่างย้ายไปรวมแถวเดียวกับดร็อบดาว "รายการต่อหน้า" ด้านบนแล้ว (ดู $pagerHtml) ?>
 </div>
 
 
@@ -530,6 +591,40 @@ function clearDate() {
 document.addEventListener('DOMContentLoaded', function() {
     // หากต้องการให้ช่องค้นหาทำงาน Auto เมื่อหยุดพิมพ์ สามารถเพิ่ม Logic ตรงนี้ได้
 });
+
+// ช่อง "ไปหน้า" ของแถบแบ่งหน้า (มีได้ทั้งบน/ล่าง → ใช้ event delegation ตัวเดียว)
+(function () {
+    function jump(input) {
+        const max = parseInt(input.dataset.max || '1', 10) || 1;
+        let p = parseInt((input.value || '').replace(/\D/g, ''), 10);
+        if (!p || p < 1) p = 1;
+        if (p > max) p = max;
+        const u = new URLSearchParams(window.location.search);
+        u.set('page', 'guest_list');
+        u.set('p', p);
+        window.location.href = 'index.php?' + u.toString();
+    }
+    document.addEventListener('click', function (e) {
+        const go = e.target.closest('.gl-page-go');
+        if (!go) return;
+        const inp = go.closest('.gl-page-jump').querySelector('.gl-page-input');
+        if (inp) jump(inp);
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        const inp = e.target.closest ? e.target.closest('.gl-page-input') : null;
+        if (inp) { e.preventDefault(); jump(inp); }
+    });
+
+    // ช่องช่วงอายุ: กันพิมพ์อักขระอื่นทันที (เหลือเฉพาะ 0-9 ๐-๙ และ "-")
+    const ageInp = document.getElementById('age_range_input');
+    if (ageInp) {
+        ageInp.addEventListener('input', function () {
+            const cleaned = this.value.replace(/[^0-9๐-๙-]/g, '');
+            if (cleaned !== this.value) this.value = cleaned;
+        });
+    }
+})();
 
 
 $(document).ready(function() {

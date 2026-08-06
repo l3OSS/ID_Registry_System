@@ -270,6 +270,71 @@ function migStatCounters(PDO $pdo, bool $apply = true): string
 }
 
 /**
+ * ค้นหาใหม่ (UNION-per-arm) — dictionary คำนำหน้าชื่อ + index ที่ arm ต้องใช้
+ *   ตาราง name_prefix (id, name UNIQUE) — ใช้ตัดคำนำหน้าออกจากคำค้น
+ *   citizens: idx_lastname (arm สกุล), idx_address_id / idx_home_address_id (arm ที่อยู่ IN ids)
+ * idempotent: สร้าง/เพิ่มเฉพาะที่ยังไม่มี · backfill dictionary จาก prefix ที่มีอยู่ (INSERT IGNORE)
+ */
+function migNamePrefix(PDO $pdo, bool $apply = true): string
+{
+    $lines = [];
+
+    $hasTable = (bool)$pdo->query(
+        "SELECT COUNT(*) FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'name_prefix'"
+    )->fetchColumn();
+
+    if (!$hasTable) {
+        if ($apply) {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `name_prefix` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `name` VARCHAR(50) NOT NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uniq_name` (`name`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            $lines[] = "name_prefix: สร้างตารางแล้ว";
+        } else {
+            $lines[] = "name_prefix: (dry-run) จะสร้างตาราง";
+        }
+    } else {
+        $lines[] = "name_prefix: มีตารางอยู่แล้ว";
+    }
+
+    // index ที่ arm ค้นหาต้องใช้
+    foreach ([
+        'idx_lastname'         => "ADD INDEX idx_lastname (lastname)",
+        'idx_address_id'       => "ADD INDEX idx_address_id (address_id)",
+        'idx_home_address_id'  => "ADD INDEX idx_home_address_id (home_address_id)",
+        'idx_birthdate'        => "ADD INDEX idx_birthdate (birthdate)", // ค้นช่วงอายุ → birthdate range (sargable)
+    ] as $idxName => $ddl) {
+        $hasIdx = (bool)$pdo->query(
+            "SELECT COUNT(*) FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'citizens' AND INDEX_NAME = '$idxName'"
+        )->fetchColumn();
+        if ($hasIdx) {
+            $lines[] = "citizens.$idxName: มีอยู่แล้ว";
+        } elseif ($apply) {
+            $pdo->exec("ALTER TABLE citizens $ddl");
+            $lines[] = "citizens.$idxName: เพิ่มแล้ว";
+        } else {
+            $lines[] = "citizens.$idxName: (dry-run) จะเพิ่ม";
+        }
+    }
+
+    // backfill dictionary จากคำนำหน้าที่มีอยู่จริง
+    if ($apply) {
+        $n = $pdo->exec(
+            "INSERT IGNORE INTO name_prefix (name)
+             SELECT DISTINCT TRIM(prefix) FROM citizens
+             WHERE prefix IS NOT NULL AND TRIM(prefix) <> ''"
+        );
+        $lines[] = "name_prefix: backfill $n รายการจาก citizens.prefix";
+    }
+
+    return implode("\n", $lines);
+}
+
+/**
  * P5+P6 — re-hash id_card_hash (domain-separated) + re-encrypt PII เป็น GCM
  * idempotent + integrity check ด้วย id_card_last4 (กันเขียนทับข้อมูลดีด้วยขยะถ้า key เพี้ยน)
  */

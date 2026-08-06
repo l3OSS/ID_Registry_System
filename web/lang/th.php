@@ -8,7 +8,7 @@
  *
  * เพิ่มภาษาอื่นภายหลัง: คัดลอกไฟล์นี้เป็น lang/en.php แล้วแปลค่าฝั่งขวา (key ต้องเหมือนกัน)
  *
- * โดเมน: ระบบลงทะเบียนผู้พัก/ศูนย์พักพิง (ไม่ใช่โดเมนวัด) — key ตั้งตามหน้า:
+ * โดเมน: ระบบลงทะเบียนบุคคล
  *   app/header/nav · btn/common/page · login/dash · guest/form/history/compare/display/qr/checkout
  *   team(user)/profile/setting/log · export · form_js (ส่งให้ JS ผ่านตัวแปร L)
  */
@@ -16,14 +16,14 @@
 return [
 
     /* ===== ทั่วไปของแอป ===== */
-    'app.default_site_name' => 'ระบบลงทะเบียนผู้พัก',
+    'app.default_site_name' => 'ระบบลงทะเบียน',
     'app.fallback_name'     => 'Reg System',
     'user.anonymous'        => 'ผู้ใช้งาน',
 
     /* ===== หัวเว็บ / เมนู (navbar + dropdown) ===== */
     'header.logo_alt'   => 'โลโก้',
     'nav.dashboard'     => 'หน้าหลัก',
-    'nav.guests'        => 'ทะเบียนผู้พัก',
+    'nav.guests'        => 'ทะเบียนบุคคล',
     'nav.profile'       => 'แก้ไขโปรไฟล์',
     'nav.admin_section' => 'การจัดการระบบ',
     'nav.team'          => 'ทีมงาน',
@@ -76,12 +76,19 @@ return [
     'list.date_ph'            => 'วันที่เข้าพัก...',
     'list.found_prefix'       => 'พบข้อมูลที่ตรงตามเงื่อนไขทั้งหมด',
     'list.found_suffix'       => 'ราย',
+    'list.more_than'          => 'มากกว่า',
     'list.search_results'     => 'ผลการค้นหา',
     'list.search_page_hint'   => 'แสดงทีละหน้า เรียงตามเข้าพักล่าสุด',
     'list.search_too_broad'   => 'คำค้นกว้างเกินไป (ใช้เวลานาน) — กรุณาพิมพ์ชื่อ/นามสกุลให้ยาวขึ้น หรือค้นด้วยเลขบัตร 13 หลัก',
+    'list.filter_too_broad'   => 'เงื่อนไขกรองกว้างเกินไป (ใช้เวลานาน) — กรุณาระบุเงื่อนไขให้แคบลง หรือเพิ่มคำค้นชื่อ/เลขบัตร',
     'list.prev_page'          => 'ก่อนหน้า',
     'list.next_page'          => 'ถัดไป',
+    'list.go_to_page'         => 'ไปหน้า',
+    'list.go'                 => 'ไป',
+    'list.page_of'            => 'หน้า :cur/:total',
     'list.export_excel'       => 'ส่งออก Excel',
+    'list.export_all'         => 'ทั้งหมด',
+    'list.export_all_hint'    => 'ส่งออกข้อมูลทุกรายการที่ตรงเงื่อนไข (ไม่จำกัดเพดานการแสดงผล)',
     'list.col_name'           => 'ชื่อ - นามสกุล',
     'list.col_age'            => 'อายุ',
     'list.col_gender'         => 'เพศ',
@@ -109,7 +116,7 @@ return [
     'login.err_connection'     => 'เกิดข้อผิดพลาดในการเชื่อมต่อระบบ',
 
     /* ===== หน้าหลัก (dashboard) ===== */
-    'dash.title'            => 'ระบบบริหารจัดการผู้เข้าพัก',
+    'dash.title'            => 'ระบบงานทะเบียน',
     'dash.greeting_hello'   => 'สวัสดีคุณ',
     'dash.greeting_welcome' => 'ยินดีต้อนรับเข้าสู่ระบบจัดการ',
     'dash.stat_current'     => 'ผู้เข้าพักปัจจุบัน',
@@ -187,7 +194,7 @@ return [
 
     /* ===== ฟอร์มลงทะเบียน/แก้ไข (guest_form) — ส่วน HTML ===== */
     'form.title_edit'    => '✏️ แก้ไขข้อมูลบุคคล',
-    'form.title_new'     => '📝 ลงทะเบียนเข้าพักใหม่',
+    'form.title_new'     => '📝 ลงทะเบียน',
     'form.card_title'    => 'แบบฟอร์มบันทึกข้อมูล',
     'form.read_card'     => 'อ่านข้อมูลจากบัตรประชาชน',
     'form.photo_label'   => 'รูปถ่ายหน้าบัตร',
