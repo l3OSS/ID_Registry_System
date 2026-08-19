@@ -208,7 +208,8 @@ return [
     'form.fullname'      => 'ชื่อ - นามสกุล *',
     'form.firstname_ph'  => 'ชื่อ',
     'form.lastname_ph'   => 'นามสกุล',
-    'form.birthdate'     => 'วันเดือนปีเกิด (ค.ศ.)',
+    'form.birthdate'     => 'วันเดือนปีเกิด (พ.ศ.)',
+    'form.birthdate_ph'  => 'วว/ดด/ปปปป หรือเลือกจากปฏิทิน',
     'form.gender'        => 'เพศ',
     'form.gender_ph'     => '- ระบุเพศ -',
     'form.phone'         => 'เบอร์โทรศัพท์ติดต่อ',
@@ -592,5 +593,127 @@ return [
     'imp.err_empty'        => 'ไฟล์ไม่มีข้อมูล (มีแต่หัวตารางหรือว่างเปล่า)',
 
     'imp.list_btn'         => 'นำเข้าไฟล์',
+
+    /* ===== ตัวติดตั้ง / อัพเดตระบบ (install/) — โหลด core/lang.php ตรง ๆ ไม่พึ่ง DB ===== */
+    /* ค่าที่มีแท็ก <code>/<strong>/<b> ต้องส่งผ่าน t() (ไม่ escape) เหมือนโดเมนอื่น */
+
+    // หัวเว็บ / แบรนด์
+    'inst.page_title'      => 'ระบบติดตั้ง - Citizen Registration CMS',
+    'inst.brand'           => 'Citizen Registration Setup',
+    'inst.subtitle'        => 'เริ่มต้นติดตั้ง / อัพเดตระบบจัดการข้อมูลผู้พัก',
+
+    // หน้าเลือกโหมด (landing)
+    'inst.choose'          => 'เลือกรูปแบบการติดตั้ง',
+    'inst.already_note'    => 'ระบบนี้ <strong>ติดตั้งแล้ว</strong> — โดยปกติควรเลือก "อัพเดต" เท่านั้น',
+    'inst.fresh_title'     => 'ติดตั้งครั้งแรก',
+    'inst.fresh_desc'      => 'สร้างฐานข้อมูลใหม่ + บัญชีผู้ดูแล + ไฟล์ .env',
+    'inst.fresh_locked'    => ' (ถูกล็อก: ติดตั้งแล้ว)',
+    'inst.update_title'    => 'อัพเดตจากเวอร์ชันเก่า',
+    'inst.update_desc'     => 'สำรอง DB + รัน migration ข้อมูลเดิม (ไม่ล้างข้อมูล)',
+
+    // หน้าโหมดอัพเดต
+    'inst.not_installed'      => 'ระบบยังไม่เคยถูกติดตั้ง — ',
+    'inst.do_install_link'    => 'ดำเนินการติดตั้ง',
+    'inst.update_intro'       => 'ระบบจะดำเนินการต่อไปนี้บนฐานข้อมูลเดิม (อ่านค่าเชื่อมต่อจาก <code>.env</code>):',
+    'inst.update_li_backup'   => '<strong>สำรองฐานข้อมูล</strong> อัตโนมัติ → <code>backups/</code>',
+    'inst.update_li_p8'       => 'P8 — trigger append-only ของ <code>activity_logs</code>',
+    'inst.update_li_p7'       => 'P7 — เพิ่ม <code>public_id</code> + backfill',
+    'inst.update_li_p5p6'     => 'P5+P6 — re-encrypt ข้อมูลอ่อนไหวเป็น GCM (idempotent)',
+    'inst.update_idem'        => 'ทุกขั้นตอน idempotent — รันซ้ำได้ ไม่แตะบัญชีผู้ใช้/รหัสผ่าน/ไฟล์ .env และไม่ล้างข้อมูล',
+    'inst.update_warn_title'  => '<strong>สำรองข้อมูลก่อนอัพเดต</strong>',
+    'inst.update_warn_li1'    => 'P5+P6 <strong>เขียนทับข้อมูลที่เข้ารหัสไว้เดิม</strong> (เลขบัตร/เบอร์โทร) — ตัวติดตั้งสำรอง DB ให้อัตโนมัติและจะหยุดถ้าสำรองไม่สำเร็จ แต่ควรสำรองเองไว้อีกชุด',
+    'inst.update_warn_li2'    => 'สำรองไฟล์ <code>.env</code> ด้วย — ห้ามเปลี่ยน <code>ENCRYPTION_KEY</code> ก่อนอัพเดต มิฉะนั้นข้อมูลเดิมจะถอดรหัสไม่ได้อีก',
+    'inst.update_confirm_js'  => 'สำรองฐานข้อมูลและไฟล์ .env ไว้แล้วใช่หรือไม่? กด OK เพื่อเริ่มอัพเดต',
+    'inst.update_start_btn'   => 'เริ่มอัพเดต',
+
+    // หน้าโหมดติดตั้งใหม่ (fresh) — ตรวจความพร้อม
+    'inst.step_check'      => '1. ตรวจสอบความพร้อมของเซิร์ฟเวอร์',
+    'inst.req_pass'        => 'ผ่าน',
+    'inst.req_fail'        => 'ล้มเหลว',
+    'inst.req_php'         => 'PHP Version (8.1+)',
+    'inst.req_pdo'         => 'PDO MySQL',
+    'inst.req_openssl'     => 'OpenSSL (Security)',
+    'inst.req_mbstring'    => 'Mbstring',
+    'inst.req_composer'    => 'Composer (vendor/)',
+    'inst.req_uploads'     => 'Folder: uploads/ (เขียนได้)',
+    'inst.req_env'         => 'เขียนไฟล์ .env ที่รากได้',
+    'inst.req_lock'        => 'เขียนไฟล์ install.lock ได้',
+
+    // ตั้งค่าฐานข้อมูล
+    'inst.step_db'         => '2. ตั้งค่าฐานข้อมูล',
+    'inst.lbl_db_host'     => 'Database Host',
+    'inst.lbl_db_port'     => 'Port',
+    'inst.lbl_db_name'     => 'Database Name',
+    'inst.ph_db_name'      => 'เช่น reg',
+    'inst.lbl_db_user'     => 'Username',
+    'inst.lbl_db_pass'     => 'Database Password',
+    'inst.ph_db_pass'      => 'เว้นว่างได้หากไม่ได้ตั้งไว้',
+
+    // บัญชีผู้ดูแล
+    'inst.step_admin'      => '3. สร้างบัญชีผู้ดูแลระบบ',
+    'inst.lbl_admin_user'  => 'Username (ID สำหรับล็อคอิน)',
+    'inst.ph_admin_user'   => 'เช่น admin',
+    'inst.lbl_admin_pass'  => 'Password (อย่างน้อย 6 ตัว — ตัวเลขล้วนได้)',
+    'inst.lbl_admin_pass2' => 'ยืนยัน Password อีกครั้ง',
+    'inst.lbl_nickname'    => 'นามแฝง',
+    'inst.ph_nickname'     => 'เช่น แอดมินหลัก',
+
+    // ข้อตกลง (terms) + ปุ่ม
+    'inst.terms_title'     => 'ยืนยันข้อตกลงก่อนเริ่มติดตั้ง',
+    'inst.terms_sub'       => 'โปรดอ่านเงื่อนไขด้านความปลอดภัยและกฎหมายข้อมูลส่วนบุคคล',
+    'inst.env_warn'        => '<strong>คำเตือน:</strong> หากไฟล์ .env หาย ข้อมูลที่เข้ารหัสไว้จะกู้คืนไม่ได้ โปรดสำรองข้อมูลเสมอ',
+    'inst.agree_label'     => 'ข้าพเจ้าได้อ่านและยอมรับข้อตกลงการใช้งานระบบ (PDPA Compliant)',
+    'inst.cancel_confirm_js' => 'ยกเลิกการติดตั้ง?',
+    'inst.install_btn'     => 'ดำเนินการต่อและเริ่มติดตั้ง',
+
+    // ข้อความ JS ตรวจรหัสผ่านฝั่งหน้าจอ
+    'inst.js_pw_min'       => 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร',
+    'inst.js_pw_mismatch'  => 'รหัสผ่านไม่ตรงกัน',
+    'inst.js_pw_ok'        => 'รหัสผ่านใช้ได้และตรงกัน',
+
+    /* ----- process_install.php ----- */
+    'inst.back_fix_btn'    => 'กลับไปแก้ไข',
+    'inst.err_prefix'      => '❌ เกิดข้อผิดพลาด: ',
+    'inst.err_relocked'    => 'ระบบถูกติดตั้งเรียบร้อยแล้ว — ไม่อนุญาตให้ติดตั้งซ้ำ (แนะนำให้ลบโฟลเดอร์ install/ เพื่อความปลอดภัย)',
+    'inst.err_not_ready'   => '❌ เซิร์ฟเวอร์ยังไม่พร้อมติดตั้ง — รายการที่ไม่ผ่าน: ',
+    'inst.err_bad_dbname'  => 'ชื่อฐานข้อมูลไม่ถูกต้อง — อนุญาตเฉพาะ a-z, A-Z, 0-9 และ _',
+    'inst.err_bad_port'    => 'พอร์ตฐานข้อมูลต้องเป็นตัวเลขเท่านั้น',
+    'inst.err_pw_mismatch' => 'รหัสผ่านทั้งสองช่องไม่ตรงกัน',
+    'inst.err_no_sql'      => 'ไม่พบไฟล์ sql/master_data.sql',
+    'inst.err_env_write'   => 'เขียนไฟล์ .env ที่รากโปรเจกต์ไม่สำเร็จ — ตรวจสิทธิ์การเขียนของโฟลเดอร์',
+    'inst.done_title'      => '✅ ติดตั้งระบบเรียบร้อยแล้ว!',
+    'inst.done_env'        => 'ระบบได้สร้างไฟล์ <b>.env</b> เพื่อเชื่อมต่อกับไฟล์ <b>config/db.php</b> เรียบร้อยแล้ว',
+    'inst.done_sec_title'  => '🛡️ คำแนะนำด้านความปลอดภัย:',
+    'inst.done_sec1'       => '1. ข้อมูลการเชื่อมต่อถูกเก็บไว้ที่ไฟล์ <b>.env</b> (กรุณาอย่าลบทิ้ง)',
+    'inst.done_sec2'       => '2. <b>สำคัญมาก:</b> กรุณาลบโฟลเดอร์ <b>/install</b> ออกจาก Server ทันที',
+    'inst.done_login_btn'  => 'เข้าสู่ระบบได้เลย',
+    'inst.fail_title'      => '❌ การติดตั้งล้มเหลว',
+    'inst.fail_cause'      => 'สาเหตุ: ',
+
+    /* ----- process_update.php ----- */
+    'inst.upd_page_title'  => 'ผลการอัพเดต - Reg',
+    'inst.upd_bad_token'   => '❌ คำขอไม่ถูกต้อง (token หมดอายุ) — กรุณาเริ่มจากหน้าอัพเดตใหม่',
+    'inst.upd_no_env'      => '❌ ไม่พบไฟล์ .env — ระบบยังไม่เคยติดตั้ง จึงอัพเดตไม่ได้ (ใช้โหมดติดตั้งครั้งแรก)',
+    'inst.upd_no_citizens' => '❌ ไม่พบตาราง citizens ในฐานข้อมูล — ไม่ใช่การติดตั้ง Reg ที่ถูกต้อง',
+    'inst.upd_ok'          => 'อัพเดตสำเร็จ',
+    'inst.upd_incomplete'  => 'อัพเดตไม่สมบูรณ์',
+    'inst.upd_backup_fail' => '<strong>หยุดการอัพเดต:</strong> สำรองฐานข้อมูลไม่สำเร็จ จึงไม่แตะข้อมูลใด ๆ (ตรวจว่ามี <code>mysqldump</code> หรือกำหนด env <code>MYSQLDUMP</code>)',
+    'inst.upd_rm_install'  => '<strong>แนะนำ:</strong> ลบโฟลเดอร์ <code>install/</code> ออกหลังอัพเดตเสร็จ',
+    'inst.upd_login_btn'   => 'เข้าสู่ระบบ',
+    // ป้าย migration step (แสดงในรายการผลอัพเดต) — คงรหัสเทคนิคไว้ แปลเฉพาะคำอธิบายไทย
+    'inst.upd_step_backup' => 'สำรองฐานข้อมูล: ',
+    'inst.upd_step_p8'     => 'P8 (activity_logs append-only)',
+    'inst.upd_step_p7'     => 'P7 (public_id)',
+    'inst.upd_step_display_key' => 'display_key (จอยินยอม/QR)',
+    'inst.upd_step_pdpa'   => 'pdpa_enabled (สวิตช์ PDPA)',
+    'inst.upd_step_siteurl' => 'site_url + qr_ip',
+    'inst.upd_step_home'   => 'ภูมิลำเนา (citizens.home_*)',
+    'inst.upd_step_prefix' => 'ค้นหา (name_prefix + index arm)',
+    'inst.upd_step_stay'   => 'สถานะเข้าพัก (is_active/last_stay_at)',
+    'inst.upd_step_stat'   => 'ตัวนับแดชบอร์ด (stat_counters)',
+    'inst.upd_step_p5p6'   => 'P5+P6 (re-encrypt GCM)',
+    'inst.upd_backfill_stay' => ' + backfill สถานะจาก stay_history',
+    'inst.upd_backfill_stat' => ' + backfill ค่าจริง',
+    'inst.upd_step_failed'   => ' ล้มเหลว: ',
 
 ];

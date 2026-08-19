@@ -5,6 +5,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+require_once __DIR__ . '/../core/lang.php'; // ข้อความทั้งหน้าอยู่ที่ lang/th.php (ไม่พึ่ง DB)
+
 $mode      = preg_replace('/[^a-z]/', '', $_GET['mode'] ?? '');
 $installed = file_exists(__DIR__ . '/install.lock');
 
@@ -28,7 +30,7 @@ if ($mode === 'update') {
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <title>ระบบติดตั้ง - Citizen Registration CMS</title>
+    <title><?php echo e('inst.page_title'); ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
@@ -43,26 +45,26 @@ if ($mode === 'update') {
 <div class="container">
     <div class="card install-card shadow-lg border-0">
         <div class="card-header bg-primary text-white p-4 text-center">
-            <h2 class="mb-0 fw-bold">Citizen Registration Setup</h2>
-            <p class="mb-0 opacity-75">เริ่มต้นติดตั้ง / อัพเดตระบบจัดการข้อมูลผู้พัก</p>
+            <h2 class="mb-0 fw-bold"><?php echo e('inst.brand'); ?></h2>
+            <p class="mb-0 opacity-75"><?php echo e('inst.subtitle'); ?></p>
         </div>
         <div class="card-body p-4">
 
 <?php if ($mode !== 'fresh' && $mode !== 'update'): // ---------- LANDING ---------- ?>
 
             <div class="step-header">
-                <h5 class="fw-bold"><i class="bi bi-signpost-split"></i> เลือกรูปแบบการติดตั้ง</h5>
+                <h5 class="fw-bold"><i class="bi bi-signpost-split"></i> <?php echo e('inst.choose'); ?></h5>
             </div>
             <?php if ($installed): ?>
-                <div class="alert alert-info border-0 small"><i class="bi bi-info-circle"></i> ระบบนี้ <strong>ติดตั้งแล้ว</strong> — โดยปกติควรเลือก "อัพเดต" เท่านั้น</div>
+                <div class="alert alert-info border-0 small"><i class="bi bi-info-circle"></i> <?php echo t('inst.already_note'); ?></div>
             <?php endif; ?>
             <div class="row g-3">
                 <div class="col-md-6">
                     <a href="index.php?mode=fresh" class="text-decoration-none <?php echo $installed ? 'pe-none opacity-50' : ''; ?>">
                         <div class="card mode-card h-100 text-center p-4">
                             <i class="bi bi-stars text-primary display-4"></i>
-                            <h5 class="fw-bold mt-3">ติดตั้งครั้งแรก</h5>
-                            <p class="text-muted small mb-0">สร้างฐานข้อมูลใหม่ + บัญชีผู้ดูแล + ไฟล์ .env<?php echo $installed ? ' (ถูกล็อก: ติดตั้งแล้ว)' : ''; ?></p>
+                            <h5 class="fw-bold mt-3"><?php echo e('inst.fresh_title'); ?></h5>
+                            <p class="text-muted small mb-0"><?php echo e('inst.fresh_desc'); ?><?php echo $installed ? e('inst.fresh_locked') : ''; ?></p>
                         </div>
                     </a>
                 </div>
@@ -70,8 +72,8 @@ if ($mode === 'update') {
                     <a href="index.php?mode=update" class="text-decoration-none <?php echo $installed ? '' : 'opacity-75'; ?>">
                         <div class="card mode-card h-100 text-center p-4">
                             <i class="bi bi-arrow-repeat text-success display-4"></i>
-                            <h5 class="fw-bold mt-3">อัพเดตจากเวอร์ชันเก่า</h5>
-                            <p class="text-muted small mb-0">สำรอง DB + รัน migration บนข้อมูลเดิม (ไม่ล้างข้อมูล)</p>
+                            <h5 class="fw-bold mt-3"><?php echo e('inst.update_title'); ?></h5>
+                            <p class="text-muted small mb-0"><?php echo e('inst.update_desc'); ?></p>
                         </div>
                     </a>
                 </div>
@@ -80,36 +82,35 @@ if ($mode === 'update') {
 <?php elseif ($mode === 'update'): // ---------- UPDATE ---------- ?>
 
             <div class="step-header">
-                <h5 class="fw-bold"><i class="bi bi-arrow-repeat"></i> อัพเดตจากเวอร์ชันเก่า</h5>
+                <h5 class="fw-bold"><i class="bi bi-arrow-repeat"></i> <?php echo e('inst.update_title'); ?></h5>
             </div>
             <?php if (!$installed): ?>
                 <div class="alert alert-warning border-0"><i class="bi bi-exclamation-triangle-fill"></i>
-                    ยังไม่พบการติดตั้งเดิม (`install.lock`) — หากยังไม่เคยติดตั้ง กรุณา
-                    <a href="index.php?mode=fresh">ติดตั้งครั้งแรก</a> ก่อน
+                    <?php echo e('inst.not_installed'); ?><a href="index.php?mode=fresh"><?php echo e('inst.do_install_link'); ?></a>
                 </div>
             <?php else: ?>
-                <p class="text-muted">ระบบจะดำเนินการต่อไปนี้บนฐานข้อมูลเดิม (อ่านค่าเชื่อมต่อจาก <code>.env</code>):</p>
+                <p class="text-muted"><?php echo t('inst.update_intro'); ?></p>
                 <ul class="mb-4">
-                    <li><strong>สำรองฐานข้อมูล</strong> อัตโนมัติ → <code>backups/</code></li>
-                    <li>P8 — trigger append-only ของ <code>activity_logs</code></li>
-                    <li>P7 — เพิ่ม <code>public_id</code> + backfill</li>
-                    <li>P5+P6 — re-encrypt ข้อมูลอ่อนไหวเป็น GCM (idempotent)</li>
+                    <li><?php echo t('inst.update_li_backup'); ?></li>
+                    <li><?php echo t('inst.update_li_p8'); ?></li>
+                    <li><?php echo t('inst.update_li_p7'); ?></li>
+                    <li><?php echo t('inst.update_li_p5p6'); ?></li>
                 </ul>
                 <div class="alert alert-info border-0 small"><i class="bi bi-shield-check"></i>
-                    ทุกขั้นตอน idempotent — รันซ้ำได้ ไม่แตะบัญชีผู้ใช้/รหัสผ่าน/ไฟล์ .env และไม่ล้างข้อมูล
+                    <?php echo e('inst.update_idem'); ?>
                 </div>
                 <div class="alert alert-warning border-0 small">
-                    <i class="bi bi-exclamation-triangle-fill"></i> <strong>สำรองข้อมูลก่อนอัพเดต</strong>
+                    <i class="bi bi-exclamation-triangle-fill"></i> <?php echo t('inst.update_warn_title'); ?>
                     <ul class="mb-0 mt-1 ps-3">
-                        <li>P5+P6 <strong>เขียนทับข้อมูลที่เข้ารหัสไว้เดิม</strong> (เลขบัตร/เบอร์โทร) — ตัวติดตั้งสำรอง DB ให้อัตโนมัติและจะหยุดถ้าสำรองไม่สำเร็จ แต่ควรสำรองเองไว้อีกชุด</li>
-                        <li>สำรองไฟล์ <code>.env</code> ด้วย — ห้ามเปลี่ยน <code>ENCRYPTION_KEY</code> ก่อนอัพเดต มิฉะนั้นข้อมูลเดิมจะถอดรหัสไม่ได้อีก</li>
+                        <li><?php echo t('inst.update_warn_li1'); ?></li>
+                        <li><?php echo t('inst.update_warn_li2'); ?></li>
                     </ul>
                 </div>
-                <form action="process_update.php" method="POST" onsubmit="return confirm('สำรองฐานข้อมูลและไฟล์ .env ไว้แล้วใช่หรือไม่? กด OK เพื่อเริ่มอัพเดต');">
+                <form action="process_update.php" method="POST" onsubmit="return confirm('<?php echo e('inst.update_confirm_js'); ?>');">
                     <input type="hidden" name="update_token" value="<?php echo htmlspecialchars($_SESSION['update_token']); ?>">
                     <div class="d-flex gap-2">
-                        <a href="index.php" class="btn btn-outline-secondary w-50">ย้อนกลับ</a>
-                        <button type="submit" class="btn btn-success w-50 fw-bold"><i class="bi bi-arrow-repeat"></i> เริ่มอัพเดต</button>
+                        <a href="index.php" class="btn btn-outline-secondary w-50"><?php echo e('btn.back'); ?></a>
+                        <button type="submit" class="btn btn-success w-50 fw-bold"><i class="bi bi-arrow-repeat"></i> <?php echo e('inst.update_start_btn'); ?></button>
                     </div>
                 </form>
             <?php endif; ?>
@@ -117,13 +118,13 @@ if ($mode === 'update') {
 <?php else: // ---------- FRESH (mode === 'fresh') ---------- ?>
 
             <div class="step-header">
-                <h5 class="fw-bold"><i class="bi bi-gear-wide-connected"></i> 1. ตรวจสอบความพร้อมของเซิร์ฟเวอร์</h5>
+                <h5 class="fw-bold"><i class="bi bi-gear-wide-connected"></i> <?php echo e('inst.step_check'); ?></h5>
             </div>
             <ul class="list-group mb-4">
                 <?php foreach($requirements as $label => $pass): ?>
                 <li class="list-group-item d-flex justify-content-between align-items-center small">
-                    <?php echo $label; ?>
-                    <?php echo $pass ? '<span class="text-success fw-bold"><i class="bi bi-check-circle"></i> ผ่าน</span>' : '<span class="text-danger fw-bold"><i class="bi bi-x-circle"></i> ล้มเหลว</span>'; ?>
+                    <?php echo htmlspecialchars($label); ?>
+                    <?php echo $pass ? '<span class="text-success fw-bold"><i class="bi bi-check-circle"></i> ' . e('inst.req_pass') . '</span>' : '<span class="text-danger fw-bold"><i class="bi bi-x-circle"></i> ' . e('inst.req_fail') . '</span>'; ?>
                 </li>
                 <?php endforeach; ?>
             </ul>
@@ -132,51 +133,51 @@ if ($mode === 'update') {
             <form action="process_install.php" method="POST">
 
                 <div class="step-header">
-                    <h5 class="fw-bold"><i class="bi bi-database-fill-gear"></i> 2. ตั้งค่าฐานข้อมูล</h5>
+                    <h5 class="fw-bold"><i class="bi bi-database-fill-gear"></i> <?php echo e('inst.step_db'); ?></h5>
                 </div>
                 <div class="row g-3 mb-4">
                     <div class="col-md-4">
-                        <label class="form-label small">Database Host</label>
+                        <label class="form-label small"><?php echo e('inst.lbl_db_host'); ?></label>
                         <input type="text" name="db_host" class="form-control" value="localhost" required>
                     </div>
                     <div class="col-md-2">
-                        <label class="form-label small">Port</label>
+                        <label class="form-label small"><?php echo e('inst.lbl_db_port'); ?></label>
                         <input type="text" name="db_port" class="form-control" value="3306" required>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small">Database Name</label>
-                        <input type="text" name="db_name" class="form-control" placeholder="เช่น reg" required>
+                        <label class="form-label small"><?php echo e('inst.lbl_db_name'); ?></label>
+                        <input type="text" name="db_name" class="form-control" placeholder="<?php echo e('inst.ph_db_name'); ?>" required>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small">Username</label>
+                        <label class="form-label small"><?php echo e('inst.lbl_db_user'); ?></label>
                         <input type="text" name="db_user" class="form-control" value="root" required>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small">Database Password</label>
-                        <input type="password" name="db_pass" class="form-control" placeholder="เว้นว่างได้หากไม่ได้ตั้งไว้">
+                        <label class="form-label small"><?php echo e('inst.lbl_db_pass'); ?></label>
+                        <input type="password" name="db_pass" class="form-control" placeholder="<?php echo e('inst.ph_db_pass'); ?>">
                     </div>
                 </div>
 
                 <div class="step-header">
-                    <h5 class="fw-bold"><i class="bi bi-person-badge-fill"></i> 3. สร้างบัญชีผู้ดูแลระบบ</h5>
+                    <h5 class="fw-bold"><i class="bi bi-person-badge-fill"></i> <?php echo e('inst.step_admin'); ?></h5>
                 </div>
                 <div class="row g-3 mb-4">
                     <div class="col-md-12">
-                        <label class="form-label small">Username (ID สำหรับล็อคอิน)</label>
-                        <input type="text" name="admin_user" class="form-control" placeholder="เช่น admin" required>
+                        <label class="form-label small"><?php echo e('inst.lbl_admin_user'); ?></label>
+                        <input type="text" name="admin_user" class="form-control" placeholder="<?php echo e('inst.ph_admin_user'); ?>" required>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small">Password (อย่างน้อย 6 ตัว — ตัวเลขล้วนได้)</label>
+                        <label class="form-label small"><?php echo e('inst.lbl_admin_pass'); ?></label>
                         <input type="password" name="admin_pass" id="admin_pass" class="form-control" minlength="6" required oninput="checkPasswordMatch()">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small">ยืนยัน Password อีกครั้ง</label>
+                        <label class="form-label small"><?php echo e('inst.lbl_admin_pass2'); ?></label>
                         <input type="password" name="admin_pass_confirm" id="admin_pass_confirm" class="form-control" minlength="6" required oninput="checkPasswordMatch()">
                         <div id="password-feedback" class="small mt-1"></div>
                     </div>
                     <div class="col-12">
-                        <label class="form-label small">นามแฝง</label>
-                        <input type="text" name="admin_nickname" class="form-control" placeholder="เช่น แอดมินหลัก" required>
+                        <label class="form-label small"><?php echo e('inst.lbl_nickname'); ?></label>
+                        <input type="text" name="admin_nickname" class="form-control" placeholder="<?php echo e('inst.ph_nickname'); ?>" required>
                     </div>
                 </div>
 
@@ -184,8 +185,8 @@ if ($mode === 'update') {
                     <div class="card-body p-4">
                         <div class="text-center mb-4">
                             <i class="bi bi-file-earmark-medical text-primary display-4"></i>
-                            <h4 class="fw-bold mt-2">ยืนยันข้อตกลงก่อนเริ่มติดตั้ง</h4>
-                            <p class="text-muted small">โปรดอ่านเงื่อนไขด้านความปลอดภัยและกฎหมายข้อมูลส่วนบุคคล</p>
+                            <h4 class="fw-bold mt-2"><?php echo e('inst.terms_title'); ?></h4>
+                            <p class="text-muted small"><?php echo e('inst.terms_sub'); ?></p>
                         </div>
 
                         <div class="form-control bg-light p-3 mb-4" style="height: 250px; overflow-y: scroll; font-size: 0.9rem; line-height: 1.6;">
@@ -194,20 +195,20 @@ if ($mode === 'update') {
 
                         <div class="alert alert-warning border-0 small shadow-sm mb-4">
                             <i class="bi bi-exclamation-triangle-fill"></i>
-                            <strong>คำเตือน:</strong> หากไฟล์ .env หาย ข้อมูลที่เข้ารหัสไว้จะกู้คืนไม่ได้ โปรดสำรองข้อมูลเสมอ
+                            <?php echo t('inst.env_warn'); ?>
                         </div>
 
                         <div class="form-check mb-4">
                             <input class="form-check-input border-primary" type="checkbox" id="agreeCheckbox">
                             <label class="form-check-label fw-bold" for="agreeCheckbox">
-                                ข้าพเจ้าได้อ่านและยอมรับข้อตกลงการใช้งานระบบ (PDPA Compliant)
+                                <?php echo e('inst.agree_label'); ?>
                             </label>
                         </div>
 
                         <div class="d-flex gap-2">
-                            <button type="button" class="btn btn-outline-secondary w-50" onclick="if(confirm('ยกเลิกการติดตั้ง?')) window.location.href='index.php';">ยกเลิก</button>
+                            <button type="button" class="btn btn-outline-secondary w-50" onclick="if(confirm('<?php echo e('inst.cancel_confirm_js'); ?>')) window.location.href='index.php';"><?php echo e('btn.cancel'); ?></button>
                             <button type="submit" id="installBtn" class="btn btn-primary w-50 fw-bold" disabled>
-                                ดำเนินการต่อและเริ่มติดตั้ง <i class="bi bi-chevron-right"></i>
+                                <?php echo e('inst.install_btn'); ?> <i class="bi bi-chevron-right"></i>
                             </button>
                         </div>
                     </div>
@@ -229,11 +230,11 @@ if ($mode === 'update') {
                 const confirm = document.getElementById('admin_pass_confirm');
                 const feedback = document.getElementById('password-feedback');
                 if (pass.value.length < 6) {
-                    feedback.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle"></i> รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร</span>';
+                    feedback.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle"></i> <?php echo e('inst.js_pw_min'); ?></span>';
                 } else if (pass.value !== confirm.value) {
-                    feedback.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> รหัสผ่านไม่ตรงกัน</span>';
+                    feedback.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> <?php echo e('inst.js_pw_mismatch'); ?></span>';
                 } else {
-                    feedback.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> รหัสผ่านใช้ได้และตรงกัน</span>';
+                    feedback.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> <?php echo e('inst.js_pw_ok'); ?></span>';
                 }
                 validateForm();
             }

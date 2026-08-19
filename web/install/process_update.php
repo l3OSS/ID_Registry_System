@@ -10,6 +10,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+require_once __DIR__ . '/../core/lang.php'; // ข้อความทั้งหมดอยู่ที่ lang/th.php
+
 $root = dirname(__DIR__);
 
 // 1. ต้องเป็น POST + ตรวจ nonce (กัน drive-by)
@@ -20,13 +22,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 if (empty($_POST['update_token']) || empty($_SESSION['update_token'])
     || !hash_equals($_SESSION['update_token'], (string)$_POST['update_token'])) {
     http_response_code(400);
-    die('❌ คำขอไม่ถูกต้อง (token หมดอายุ) — กรุณาเริ่มจากหน้าอัพเดตใหม่');
+    die(e('inst.upd_bad_token'));
 }
 unset($_SESSION['update_token']); // ใช้ครั้งเดียว
 
 // 2. ต้องมีการติดตั้งเดิมจริง (มี .env)
 if (!file_exists($root . '/.env')) {
-    die('❌ ไม่พบไฟล์ .env — ระบบยังไม่เคยติดตั้ง จึงอัพเดตไม่ได้ (ใช้โหมดติดตั้งครั้งแรก)');
+    die(e('inst.upd_no_env'));
 }
 
 require_once $root . '/config/db.php';    // $pdo + โหลด .env
@@ -38,7 +40,7 @@ $hasCitizens = (bool)$pdo->query(
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'citizens'"
 )->fetchColumn();
 if (!$hasCitizens) {
-    die('❌ ไม่พบตาราง citizens ในฐานข้อมูล — ไม่ใช่การติดตั้ง Reg ที่ถูกต้อง');
+    die(e('inst.upd_no_citizens'));
 }
 
 $steps = []; // [ok(bool), text]
@@ -52,41 +54,41 @@ $bk = migBackup([
     'pass' => $_ENV['DB_PASS'] ?? '',
     'root' => $root,
 ]);
-$steps[] = [$bk['ok'], 'สำรองฐานข้อมูล: ' . $bk['msg']];
+$steps[] = [$bk['ok'], t('inst.upd_step_backup') . $bk['msg']];
 $backup_failed = !$bk['ok'];
 
 // 5. รัน migration (เฉพาะเมื่อ backup สำเร็จ) — แต่ละขั้นแยก try/catch เพื่อรายงานครบ
 if (!$backup_failed) {
     foreach ([
-        'P8 (activity_logs append-only)' => fn() => migP8Triggers($pdo),
-        'P7 (public_id)'                 => fn() => migP7PublicId($pdo, true),
-        'display_key (จอยินยอม/QR)'      => fn() => migDisplayKey($pdo, true),
-        'pdpa_enabled (สวิตช์ PDPA)'      => fn() => migPdpaToggle($pdo, true),
-        'site_url + qr_ip'               => fn() => migSiteUrl($pdo, true),
-        'ภูมิลำเนา (citizens.home_*)'      => fn() => migHomeAddress($pdo, true),
-        'ค้นหา (name_prefix + index arm)'  => fn() => migNamePrefix($pdo, true),
-        'สถานะเข้าพัก (is_active/last_stay_at)' => function () use ($pdo) {
+        t('inst.upd_step_p8')          => fn() => migP8Triggers($pdo),
+        t('inst.upd_step_p7')          => fn() => migP7PublicId($pdo, true),
+        t('inst.upd_step_display_key') => fn() => migDisplayKey($pdo, true),
+        t('inst.upd_step_pdpa')        => fn() => migPdpaToggle($pdo, true),
+        t('inst.upd_step_siteurl')     => fn() => migSiteUrl($pdo, true),
+        t('inst.upd_step_home')        => fn() => migHomeAddress($pdo, true),
+        t('inst.upd_step_prefix')      => fn() => migNamePrefix($pdo, true),
+        t('inst.upd_step_stay')        => function () use ($pdo) {
             $msg = migStayDenorm($pdo, true);
             // backfill สำหรับ DB เดิม (single statement เหมาะกับขนาดปกติ · ข้อมูลจำนวนมากใช้ scripts/migrate_stay_denorm.php)
             $pdo->exec("UPDATE citizens c
                 LEFT JOIN (SELECT citizen_id, MAX(check_in) AS last_at, MAX(status='Active') AS act
                            FROM stay_history GROUP BY citizen_id) s ON s.citizen_id = c.id
                 SET c.last_stay_at = s.last_at, c.is_active = COALESCE(s.act, 0)");
-            return $msg . " + backfill สถานะจาก stay_history";
+            return $msg . t('inst.upd_backfill_stay');
         },
-        'ตัวนับแดชบอร์ด (stat_counters)' => function () use ($pdo) {
+        t('inst.upd_step_stat')        => function () use ($pdo) {
             $msg = migStatCounters($pdo, true);
             // backfill ค่าจริง (single statement เหมาะกับขนาดปกติ · ข้อมูลจำนวนมากใช้ scripts/migrate_stat_counters.php)
             require_once dirname(__DIR__) . '/core/stats.php';
             statRebuildAll($pdo);
-            return $msg . " + backfill ค่าจริง";
+            return $msg . t('inst.upd_backfill_stat');
         },
-        'P5+P6 (re-encrypt GCM)'         => fn() => migP5P6Reencrypt($pdo, true),
+        t('inst.upd_step_p5p6')        => fn() => migP5P6Reencrypt($pdo, true),
     ] as $label => $fn) {
         try {
             $steps[] = [true, $fn()];
         } catch (Throwable $e) {
-            $steps[] = [false, "$label ล้มเหลว: " . $e->getMessage()];
+            $steps[] = [false, $label . t('inst.upd_step_failed') . $e->getMessage()];
         }
     }
 }
@@ -97,7 +99,7 @@ $all_ok = !in_array(false, array_map(fn($s) => $s[0], $steps), true);
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <title>ผลการอัพเดต - Reg</title>
+    <title><?php echo e('inst.upd_page_title'); ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>body{background:#f4f7f6}.rc{max-width:720px;margin:50px auto;border-radius:15px}</style>
@@ -108,14 +110,13 @@ $all_ok = !in_array(false, array_map(fn($s) => $s[0], $steps), true);
         <div class="card-header <?php echo $all_ok ? 'bg-success' : 'bg-danger'; ?> text-white p-4 text-center">
             <h3 class="mb-0 fw-bold">
                 <i class="bi <?php echo $all_ok ? 'bi-check-circle-fill' : 'bi-exclamation-octagon-fill'; ?>"></i>
-                <?php echo $all_ok ? 'อัพเดตสำเร็จ' : 'อัพเดตไม่สมบูรณ์'; ?>
+                <?php echo $all_ok ? e('inst.upd_ok') : e('inst.upd_incomplete'); ?>
             </h3>
         </div>
         <div class="card-body p-4">
             <?php if ($backup_failed): ?>
                 <div class="alert alert-danger border-0">
-                    <strong>หยุดการอัพเดต:</strong> สำรองฐานข้อมูลไม่สำเร็จ จึงไม่แตะข้อมูลใด ๆ
-                    (ตรวจว่ามี <code>mysqldump</code> หรือกำหนด env <code>MYSQLDUMP</code>)
+                    <?php echo t('inst.upd_backup_fail'); ?>
                 </div>
             <?php endif; ?>
             <ul class="list-group mb-4">
@@ -128,10 +129,10 @@ $all_ok = !in_array(false, array_map(fn($s) => $s[0], $steps), true);
             </ul>
             <?php if ($all_ok): ?>
                 <div class="alert alert-warning border-0 small">
-                    <i class="bi bi-shield-lock"></i> <strong>แนะนำ:</strong> ลบโฟลเดอร์ <code>install/</code> ออกหลังอัพเดตเสร็จ
+                    <i class="bi bi-shield-lock"></i> <?php echo t('inst.upd_rm_install'); ?>
                 </div>
             <?php endif; ?>
-            <a href="../index.php" class="btn btn-primary w-100 fw-bold">เข้าสู่ระบบ</a>
+            <a href="../index.php" class="btn btn-primary w-100 fw-bold"><?php echo e('inst.upd_login_btn'); ?></a>
         </div>
     </div>
 </div>

@@ -1,10 +1,12 @@
 <?php
 // install/process_install.php
 
+require_once __DIR__ . '/../core/lang.php'; // ข้อความทั้งหมดอยู่ที่ lang/th.php (ไม่พึ่ง DB)
+
 // S1: กันติดตั้งซ้ำ (re-install attack) — ถ้ามี install.lock แล้ว ห้ามรันซ้ำเด็ดขาด
 if (file_exists(__DIR__ . '/install.lock')) {
     http_response_code(403);
-    die('ระบบถูกติดตั้งเรียบร้อยแล้ว — ไม่อนุญาตให้ติดตั้งซ้ำ (แนะนำให้ลบโฟลเดอร์ install/ เพื่อความปลอดภัย)');
+    die(e('inst.err_relocked'));
 }
 
 require_once __DIR__ . '/../core/session.php';
@@ -20,9 +22,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 require_once __DIR__ . '/requirements.php';
 if ($failed = installRequirementsFailed()) {
     http_response_code(400);
-    die('❌ เซิร์ฟเวอร์ยังไม่พร้อมติดตั้ง — รายการที่ไม่ผ่าน: '
+    die(e('inst.err_not_ready')
         . htmlspecialchars(implode(', ', $failed))
-        . " <button onclick='history.back()'>กลับไปแก้ไข</button>");
+        . " <button onclick='history.back()'>" . e('inst.back_fix_btn') . "</button>");
 }
 
 // 1. รับค่าและเตรียมข้อมูล
@@ -40,19 +42,19 @@ $admin_nickname     = $_POST['admin_nickname'] ?? '';
 // S9: กัน SQL injection ใน installer — ชื่อ DB ถูกต่อสตริงตรงใน CREATE DATABASE/USE/DSN
 // จึงต้อง whitelist ให้เหลือเฉพาะอักขระที่ปลอดภัย (identifier ปกติ) ก่อนใช้งาน
 if (!preg_match('/^[a-zA-Z0-9_]+$/', $db_name)) {
-    die("❌ เกิดข้อผิดพลาด: ชื่อฐานข้อมูลไม่ถูกต้อง — อนุญาตเฉพาะ a-z, A-Z, 0-9 และ _ <button onclick='history.back()'>กลับไปแก้ไข</button>");
+    die(e('inst.err_prefix') . e('inst.err_bad_dbname') . " <button onclick='history.back()'>" . e('inst.back_fix_btn') . "</button>");
 }
 if (!preg_match('/^[0-9]+$/', (string)$db_port)) {
-    die("❌ เกิดข้อผิดพลาด: พอร์ตฐานข้อมูลต้องเป็นตัวเลขเท่านั้น <button onclick='history.back()'>กลับไปแก้ไข</button>");
+    die(e('inst.err_prefix') . e('inst.err_bad_port') . " <button onclick='history.back()'>" . e('inst.back_fix_btn') . "</button>");
 }
 
 // 🟢 ตรวจสอบความถูกต้องของรหัสผ่าน (ใช้ policy กลางจาก core/functions.php)
 require_once __DIR__ . '/../core/functions.php';
 if (($pwErr = passwordPolicyError($admin_pass_raw)) !== null) {
-    die("❌ เกิดข้อผิดพลาด: " . htmlspecialchars($pwErr) . " <button onclick='history.back()'>กลับไปแก้ไข</button>");
+    die(e('inst.err_prefix') . htmlspecialchars($pwErr) . " <button onclick='history.back()'>" . e('inst.back_fix_btn') . "</button>");
 }
 if ($admin_pass_raw !== $admin_pass_confirm) {
-    die("❌ เกิดข้อผิดพลาด: รหัสผ่านทั้งสองช่องไม่ตรงกัน <button onclick='history.back()'>กลับไปแก้ไข</button>");
+    die(e('inst.err_prefix') . e('inst.err_pw_mismatch') . " <button onclick='history.back()'>" . e('inst.back_fix_btn') . "</button>");
 }
 
 $admin_pass_hash = password_hash($admin_pass_raw, PASSWORD_DEFAULT);
@@ -66,7 +68,7 @@ try {
 
     // 3. รันไฟล์ SQL Master Data
     $sql_file = 'sql/master_data.sql';
-    if (!file_exists($sql_file)) throw new Exception("ไม่พบไฟล์ sql/master_data.sql");
+    if (!file_exists($sql_file)) throw new Exception(t('inst.err_no_sql'));
     $sql_content = file_get_contents($sql_file);
     $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, 1);
     $pdo->exec($sql_content);
@@ -94,7 +96,7 @@ try {
                  . "APP_ENV=\"prod\"\n";
     
     if (file_put_contents(__DIR__ . '/../.env', $env_content) === false) {
-        throw new Exception("เขียนไฟล์ .env ที่รากโปรเจกต์ไม่สำเร็จ — ตรวจสิทธิ์การเขียนของโฟลเดอร์");
+        throw new Exception(t('inst.err_env_write'));
     }
 
     // 6. บันทึกประวัติการติดตั้งลงตาราง settings
@@ -114,20 +116,20 @@ try {
 
     // 🟢 แสดงผลสำเร็จ
     echo "<div style='font-family:sans-serif; text-align:center; padding:50px;'>";
-    echo "<h1 style='color:green;'>✅ ติดตั้งระบบเรียบร้อยแล้ว!</h1>";
-    echo "<p>ระบบได้สร้างไฟล์ <b>.env</b> เพื่อเชื่อมต่อกับไฟล์ <b>config/db.php</b> เรียบร้อยแล้ว</p>";
+    echo "<h1 style='color:green;'>" . e('inst.done_title') . "</h1>";
+    echo "<p>" . t('inst.done_env') . "</p>";
     echo "<div style='background:#fff3cd; padding:20px; border-radius:10px; display:inline-block; margin-top:20px;'>";
-    echo "<p style='color:#856404;'><b>🛡️ คำแนะนำด้านความปลอดภัย:</b></p>";
-    echo "<p>1. ข้อมูลการเชื่อมต่อถูกเก็บไว้ที่ไฟล์ <b>.env</b> (กรุณาอย่าลบทิ้ง)</p>";
-    echo "<p>2. <b>สำคัญมาก:</b> กรุณาลบโฟลเดอร์ <b>/install</b> ออกจาก Server ทันที</p>";
+    echo "<p style='color:#856404;'><b>" . e('inst.done_sec_title') . "</b></p>";
+    echo "<p>" . t('inst.done_sec1') . "</p>";
+    echo "<p>" . t('inst.done_sec2') . "</p>";
     echo "</div>";
-    echo "<br><br><a href='../index.php' style='padding:15px 30px; background:blue; color:white; text-decoration:none; border-radius:30px; font-weight:bold;'>เข้าสู่ระบบได้เลย</a>";
+    echo "<br><br><a href='../index.php' style='padding:15px 30px; background:blue; color:white; text-decoration:none; border-radius:30px; font-weight:bold;'>" . e('inst.done_login_btn') . "</a>";
     echo "</div>";
 
 } catch (Exception $e) {
     echo "<div style='font-family:sans-serif; color:red; padding:30px; border:1px solid red;'>";
-    echo "<h3>❌ การติดตั้งล้มเหลว</h3>";
-    echo "<p>สาเหตุ: " . $e->getMessage() . "</p>";
-    echo "<button onclick='history.back()'>กลับไปแก้ไข</button>";
+    echo "<h3>" . e('inst.fail_title') . "</h3>";
+    echo "<p>" . e('inst.fail_cause') . htmlspecialchars($e->getMessage()) . "</p>";
+    echo "<button onclick='history.back()'>" . e('inst.back_fix_btn') . "</button>";
     echo "</div>";
 }
