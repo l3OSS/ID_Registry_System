@@ -138,7 +138,7 @@ if ($id > 0) {
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label"><?php echo e('form.birthdate'); ?></label>
-                                <input type="text" name="birthdate" id="birthdate" class="form-control thai-date" value="<?php echo htmlspecialchars($citizen['birthdate'] ?? ''); ?>">
+                                <input type="text" name="birthdate" id="birthdate" class="form-control thai-date" placeholder="<?php echo e('form.birthdate_ph'); ?>" value="<?php echo htmlspecialchars($citizen['birthdate'] ?? ''); ?>">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label text-primary fw-bold"><?php echo e('form.gender'); ?></label>
@@ -720,6 +720,25 @@ function initThaiDate(target, opts) {
         altInput: true,
         altFormat: "THAI",     // ค่าที่แสดง = พ.ศ. (sentinel)
         locale: "th",
+        // เดิมช่องเป็น readonly (allowInput=false) เลือกได้จากปฏิทินอย่างเดียว — วันเกิดย้อนหลังหลายสิบปี
+        // เลื่อนทีละเดือนลำบาก คนกรอกจึง "พิมพ์" ซึ่งไม่เข้า แล้วบันทึกเป็น NULL เงียบ ๆ
+        // เปิดให้พิมพ์ได้ + parseDate รองรับเลขไทย/พ.ศ./ค.ศ. (ปฏิทินยังใช้ได้ตามเดิม)
+        allowInput: true,
+        parseDate: function (datestr, format) {
+            // เลขไทย → อารบิก แล้วจับรูปแบบ ปปปป-ดด-วว(+เวลา) หรือ วว/ดด/ปปปป(+เวลา)
+            const s = String(datestr).replace(/[๐-๙]/g, d => "๐๑๒๓๔๕๖๗๘๙".indexOf(d)).trim();
+            let y, mo, d, hh = 0, mi = 0, m;
+            if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?/))) {
+                y = +m[1]; mo = +m[2]; d = +m[3]; if (m[4] != null) { hh = +m[4]; mi = +m[5]; }
+            } else if ((m = s.match(/^(\d{1,2})[\/\-.\s]+(\d{1,2})[\/\-.\s]+(\d{4})(?:[ ,]+(\d{1,2}):(\d{2}))?/))) {
+                d = +m[1]; mo = +m[2]; y = +m[3]; if (m[4] != null) { hh = +m[4]; mi = +m[5]; }
+            } else {
+                return undefined;   // อ่านไม่ออก = ไม่เดา (flatpickr จะไม่ตั้งค่า)
+            }
+            if (y > 2400) y -= 543;                 // พ.ศ. → ค.ศ.
+            const dt = new Date(y, mo - 1, d, hh, mi);
+            return isNaN(dt.getTime()) ? undefined : dt;
+        },
         onReady: function (_s, _d, fp) { installBuddhistYear(fp); }, // หัวปฏิทินโชว์ปี พ.ศ.
         formatDate: function (date, format) {
             const p = function (n) { return String(n).padStart(2, '0'); };

@@ -287,6 +287,19 @@ if (!$old_data) {
     exit();
 }
 
+// แก้ไขเรคคอร์ดเดิมโดยตรง — ผู้ใช้กด "แก้ไข" เจาะจงเรคคอร์ดนี้อยู่แล้ว การเจอ id_card ซ้ำ
+// คือซ้ำกับตัวเอง ไม่ใช่ทะเบียนซ้ำจริง จึงไม่ต้องเด้งหน้าเปรียบเทียบ (ถ้าเด้งแล้วผู้ใช้เผลอกด
+// "ใช้ข้อมูลเดิม" การแก้ไขทั้งหมด รวมวันเกิด จะถูกทิ้งเงียบ ๆ) · หน้าเปรียบเทียบมีไว้สำหรับ
+// "ลงทะเบียนใหม่" ที่บังเอิญชนคนที่มีอยู่แล้วเท่านั้น
+// หมายเหตุ: ถ้าแก้ไขแล้วเปลี่ยนเลขบัตรไปชนคน "อื่น" public_id จะไม่ตรง → ตกไปหน้าเปรียบเทียบตามเดิม
+$editing_pid = preg_replace('/\D/', '', (string)($post_data['id'] ?? ''));
+if (($post_data['action'] ?? '') === 'update'
+    && $editing_pid !== ''
+    && (string)($old_data['public_id'] ?? '') === $editing_pid) {
+    saveCitizenAndStay($pdo, $post_data, $old_data, 'update');
+    exit();
+}
+
 // If duplicate found, show comparison view
 $stmt_stay = $pdo->prepare("SELECT check_in FROM stay_history WHERE citizen_id = ? AND status = 'Active'");
 $stmt_stay->execute([$old_data['id']]);
