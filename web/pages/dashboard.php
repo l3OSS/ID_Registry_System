@@ -39,13 +39,18 @@ try {
               GROUP BY cm.id";
     $custom_stats = dbg_measure('dash: custom GROUP BY (is_active)', fn() => $pdo->query($sql_c)->fetchAll());
 
-    // Recent Active Residents (Limit 5)
-    $sql_recent = "SELECT c.id, c.public_id, c.prefix, c.firstname, c.lastname, c.photo_path, h.check_in, h.location_type
-                   FROM stay_history h
-                   JOIN citizens c ON h.citizen_id = c.id
-                   WHERE h.status = 'Active'
-                   ORDER BY h.check_in DESC LIMIT 5";
-    $active_citizens = $pdo->query($sql_recent)->fetchAll();
+    // Recent Active Residents (Limit 5) — PII (ชื่อ/รูป) จึงดึงเฉพาะบทบาทที่มีสิทธิ์เห็นข้อมูลบุคคล
+    // Viewer (ไม่มี guests.view) ได้ [] — ไม่ over-fetch PII มาแล้วค่อยซ่อนใน HTML
+    if (userCan('guests.view')) {
+        $sql_recent = "SELECT c.id, c.public_id, c.prefix, c.firstname, c.lastname, c.photo_path, h.check_in, h.location_type
+                       FROM stay_history h
+                       JOIN citizens c ON h.citizen_id = c.id
+                       WHERE h.status = 'Active'
+                       ORDER BY h.check_in DESC LIMIT 5";
+        $active_citizens = $pdo->query($sql_recent)->fetchAll();
+    } else {
+        $active_citizens = [];
+    }
 
 
     $stmt = $pdo->query("SELECT install_log FROM settings ORDER BY id DESC LIMIT 1");
@@ -131,6 +136,7 @@ $nickname = $_SESSION['nickname'] ?? $_SESSION['username'] ?? t('user.anonymous'
     </div>
 
     <div class="row">
+        <?php if (userCan('guests.view')): /* การ์ดนี้แสดง PII (ชื่อ/รูป/ลิงก์โปรไฟล์) — Viewer ไม่เห็น */ ?>
         <div class="col-lg-8 mb-4">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
@@ -170,18 +176,23 @@ $nickname = $_SESSION['nickname'] ?? $_SESSION['username'] ?? t('user.anonymous'
                 </div>
             </div>
         </div>
+        <?php endif; ?>
 
         <div class="col-lg-4">
             <div class="card border-0 shadow-sm bg-white h-100">
                 <div class="card-body p-4 d-flex flex-column justify-content-center">
                     <h5 class="mb-4 text-dark fw-bold border-bottom pb-2"><?php echo e('dash.quick_menu'); ?></h5>
+                    <?php if (userCan('guests.register')): ?>
                     <a href="index.php?page=guest_form" class="btn btn-primary w-100 py-3 mb-3 fw-bold rounded-3 shadow-sm">
                         <i class="bi bi-person-plus-fill"></i> <?php echo e('dash.register_new'); ?>
                     </a>
+                    <?php endif; ?>
+                    <?php if (userCan('guests.view')): ?>
                     <a href="index.php?page=guest_list" class="btn btn-outline-dark w-100 py-3 mb-3 rounded-3">
                         <i class="bi bi-search"></i> <?php echo e('dash.search_names'); ?>
                     </a>
-                    <?php if (pdpaEnabled($pdo)): ?>
+                    <?php endif; ?>
+                    <?php if (pdpaEnabled($pdo) && userCan('guests.register')): ?>
                     <button type="button" class="btn btn-outline-success w-100 py-3 mb-3 rounded-3" data-bs-toggle="modal" data-bs-target="#qrDisplayModal">
                         <i class="bi bi-qr-code"></i> <?php echo e('dash.make_qr'); ?>
                     </button>
@@ -212,6 +223,7 @@ if ($log && json_last_error() === JSON_ERROR_NONE) {
     </div>
 </div>
 
+<?php if (pdpaEnabled($pdo) && userCan('guests.register')): /* Viewer ไม่มีสิทธิ์ทำ QR ยินยอม — ไม่ต้องสร้าง display_key/โมดัล */ ?>
 <?php
 // URL หน้ายินยอม (guest_display) สำหรับ QR — ประกอบจาก site_url + qr_ip (setting.php) + display_key ประจำตัว
 $__s        = appSettings($pdo);
@@ -256,6 +268,7 @@ $qr_display_url = buildDisplayQrUrl($__siteUrl, $__s['qr_ip'], $__dispKey);
         });
     })();
 </script>
+<?php endif; ?>
 
 <script>
     /**

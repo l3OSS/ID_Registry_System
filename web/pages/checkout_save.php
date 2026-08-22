@@ -14,11 +14,12 @@ require_once __DIR__ . '/../core/log.php';
 require_once __DIR__ . '/../core/functions.php'; // resolveCitizenId (P7)
 require_once __DIR__ . '/../core/lang.php';       // ข้อความทั้งระบบ — POST ตรง ไม่ผ่าน index.php
 require_once __DIR__ . '/../core/csrf.php';       // ไฟล์นี้ถูก POST ตรง ไม่ผ่าน router จึงต้องตรวจเอง
+require_once __DIR__ . '/../core/rbac.php';       // requirePermission — เช็คเอาต์เป็น state change ต้องมีสิทธิ์
 require_once __DIR__ . '/../core/stats.php';       // ตัวนับแดชบอร์ด (active/กลุ่มเปราะบาง)
 
 // --- 2. Security Check ---
-// ตรวจสอบว่าผู้ใช้มีสิทธิ์เข้าถึงหน้านี้หรือไม่ (ต้อง Login แล้ว)
-checkLogin();
+// เช็คเอาต์เป็นการจัดการวงจรผู้พัก — ต้องมี guests.register (Viewer/บทบาทอ่านอย่างเดียว POST ตรงไม่ได้)
+requirePermission('guests.register');
 
 /**
  * 🛡️ เดิมหน้านี้รับค่าทาง **GET** และมีแค่ checkLogin() — เป็น state change ที่เรียกได้ด้วย URL เปล่า ๆ

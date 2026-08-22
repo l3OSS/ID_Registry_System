@@ -131,6 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <option value="1" <?php echo ((int)$target['role_level'] === 1) ? 'selected' : ''; ?>><?php echo e('uedit.role_1'); ?></option>
                         <option value="2" <?php echo ((int)$target['role_level'] === 2) ? 'selected' : ''; ?>><?php echo e('uedit.role_2'); ?></option>
                         <option value="3" <?php echo ((int)$target['role_level'] === 3) ? 'selected' : ''; ?>><?php echo e('uedit.role_3'); ?></option>
+                        <option value="4" <?php echo ((int)$target['role_level'] === 4) ? 'selected' : ''; ?>><?php echo e('uedit.role_4'); ?></option>
                     </select>
                     <?php if($my_role !== 1): ?>
                         <div class="form-text text-danger italic"><i class="bi bi-lock-fill"></i> <?php echo e('uedit.only_engineer'); ?></div>

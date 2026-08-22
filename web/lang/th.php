@@ -318,6 +318,7 @@ return [
     'user.role_label'         => 'ระดับสิทธิ์การเข้าถึง (Permissions) *',
     'user.role_admin'         => '⚖️ Admin - ผู้จัดการ',
     'user.role_regis'         => '🏢 Regis - งานทะเบียน',
+    'user.role_viewer'        => '📊 Viewer - ผู้ชมสถิติ (ไม่เห็นข้อมูลบุคคล)',
     'user.create_btn'         => 'สร้างบัญชีผู้ใช้งาน',
     'user.cancel_back'        => 'ยกเลิกและย้อนกลับ',
     'uedit.not_found'         => '❌ ไม่พบข้อมูลผู้ใช้งานในระบบ',
@@ -335,6 +336,7 @@ return [
     'uedit.role_1'            => 'EngiNear ภารโรง',
     'uedit.role_2'            => 'Admin ผู้จัดการ',
     'uedit.role_3'            => 'Regis งานทะเบียน',
+    'uedit.role_4'            => 'Viewer ผู้ชมสถิติ',
     'uedit.only_engineer'     => 'เฉพาะ EngiNear เท่านั้นที่สามารถเปลี่ยนระดับสิทธิ์ได้',
     'uedit.change_pw'         => 'เปลี่ยนรหัสผ่าน (หากต้องการ)',
     'uedit.new_pw_label'      => 'รหัสผ่านใหม่',
@@ -365,6 +367,7 @@ return [
     'umanage.role_eng_desc'      => 'ควบคุมระบบได้ทั้งหมด เพิ่ม/ลบ และแก้ไขเจ้าหน้าที่ได้ทุกระดับสิทธิ์',
     'umanage.role_admin_desc'    => 'จัดการข้อมูล:entity และจัดการเจ้าหน้าที่ระดับทะเบียนได้',
     'umanage.role_regis_desc'    => 'ดูแลงานทะเบียนรายวัน และแก้ไขข้อมูลโปรไฟล์ของตนเองเท่านั้น',
+    'umanage.role_viewer_desc'   => 'ดูภาพรวม/สถิติรวมบนแดชบอร์ดเท่านั้น ไม่เห็นข้อมูลบุคคล และแก้ไขอะไรไม่ได้',
 
     /* ===== โปรไฟล์ส่วนตัว (profile) ===== */
     'prof.err_nickname'   => '❌ กรุณาระบุนามแฝง',
@@ -715,6 +718,7 @@ return [
     'inst.upd_step_pdpa'   => 'pdpa_enabled (สวิตช์ PDPA)',
     'inst.upd_step_siteurl' => 'site_url + qr_ip',
     'inst.upd_step_entity'  => 'คำเรียกหน่วยข้อมูล (settings.entity_term)',
+    'inst.upd_step_viewer'  => 'บทบาท Viewer (roles id=4)',
     'inst.upd_step_home'   => 'ภูมิลำเนา (citizens.home_*)',
     'inst.upd_step_prefix' => 'ค้นหา (name_prefix + index arm)',
     'inst.upd_step_stay'   => 'สถานะเข้าพัก (is_active/last_stay_at)',

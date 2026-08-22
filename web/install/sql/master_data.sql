@@ -7728,7 +7728,8 @@ CREATE TABLE IF NOT EXISTS `roles` (
 INSERT INTO `roles` (`id`, `role_name`, `description`) VALUES
 (1, 'EngiNear', 'ภารโรง'),
 (2, 'Admin', 'ผู้จัดการ'),
-(3, 'Regis', 'งานทะเบียน');
+(3, 'Regis', 'งานทะเบียน'),
+(4, 'Viewer', 'ผู้ชมสถิติ');
 
 -- --------------------------------------------------------
 

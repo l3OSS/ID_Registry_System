@@ -66,6 +66,7 @@ if (!$backup_failed) {
         t('inst.upd_step_pdpa')        => fn() => migPdpaToggle($pdo, true),
         t('inst.upd_step_siteurl')     => fn() => migSiteUrl($pdo, true),
         t('inst.upd_step_entity')      => fn() => migEntityTerm($pdo, true),
+        t('inst.upd_step_viewer')      => fn() => migViewerRole($pdo, true),
         t('inst.upd_step_home')        => fn() => migHomeAddress($pdo, true),
         t('inst.upd_step_prefix')      => fn() => migNamePrefix($pdo, true),
         t('inst.upd_step_stay')        => function () use ($pdo) {

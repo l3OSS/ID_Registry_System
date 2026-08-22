@@ -109,6 +109,8 @@ $logo_path     = $settings['logo_path'] ?? '';
                     <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                         <li><a class="dropdown-item" href="index.php?page=profile"><i class="bi bi-person-circle"></i> <?php echo e('nav.profile'); ?></a></li>
 
+                        <?php // ส่วนจัดการระบบ — ซ่อนทั้งบล็อกถ้าไม่มีสิทธิ์ระดับจัดการเลย (เช่น Viewer)
+                        if (userCan('users.view') || userCan('settings.manage') || userCan('logs.view')): ?>
                             <li><hr class="dropdown-divider"></li>
                             <li><h6 class="dropdown-header"><?php echo e('nav.admin_section'); ?></h6></li>
                         <?php if (userCan('users.view')): ?>
@@ -117,7 +119,10 @@ $logo_path     = $settings['logo_path'] ?? '';
                         <?php if (userCan('settings.manage')): ?>
                             <li><a class="dropdown-item" href="index.php?page=setting"><i class="bi bi-gear"></i> <?php echo e('nav.settings'); ?></a></li>
                         <?php endif; ?>
+                        <?php if (userCan('logs.view')): ?>
                             <li><a class="dropdown-item" href="index.php?page=log_viewer"><i class="bi bi-journal-text"></i> <?php echo e('nav.logs'); ?></a></li>
+                        <?php endif; ?>
+                        <?php endif; ?>
 
                         <li><hr class="dropdown-divider"></li>
                         <li>

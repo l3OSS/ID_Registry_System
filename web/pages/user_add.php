@@ -130,7 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <select name="role_level" class="form-select border-primary border-2 shadow-sm" required>
                         <?php
                         // เฉพาะบทบาทที่สร้างได้ (ไม่มี EngiNear — สร้างตอนติดตั้งเท่านั้น) + แสดงโควตา · ปิดตัวเลือกที่เต็ม
-                        $roleDesc = [2 => t('user.role_admin'), 3 => t('user.role_regis')];
+                        $roleDesc = [2 => t('user.role_admin'), 3 => t('user.role_regis'), 4 => t('user.role_viewer')];
                         foreach (CREATABLE_ROLES as $lvl):
                             $full = roleQuotaFull($pdo, $lvl);
                         ?>

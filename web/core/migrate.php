@@ -187,6 +187,20 @@ function migEntityTerm(PDO $pdo, bool $apply = true): string
 }
 
 /**
+ * Viewer role (role_level = 4) — บทบาทอ่านอย่างเดียว เห็นเฉพาะสถิติรวมบนแดชบอร์ด (ไม่เห็น PII)
+ * ต้องมีแถวใน roles สำหรับ DB เดิม ไม่งั้น user_manage (INNER JOIN roles) จะตกผู้ใช้ Viewer
+ * idempotent: INSERT IGNORE (uk_role_name/PK กันซ้ำ)
+ */
+function migViewerRole(PDO $pdo, bool $apply = true): string
+{
+    $has = (bool)$pdo->query("SELECT COUNT(*) FROM roles WHERE id = 4")->fetchColumn();
+    if ($has) return "viewer_role: มีบทบาท Viewer (id=4) อยู่แล้ว";
+    if (!$apply) return "viewer_role: (dry-run) จะเพิ่มบทบาท Viewer (id=4)";
+    $pdo->exec("INSERT IGNORE INTO roles (id, role_name, description) VALUES (4, 'Viewer', 'ผู้ชมสถิติ')");
+    return "viewer_role: เพิ่มบทบาท Viewer (id=4) แล้ว";
+}
+
+/**
  * ภูมิลำเนา (กล่อง 3 ในหน้าเพิ่มข้อมูล) — เก็บเป็นเลข address_id เหมือนที่อยู่ตามทะเบียนบ้าน
  * home_same_as_reg = 1 (ค่าเริ่มต้น) แปลว่าใช้ที่อยู่ตามทะเบียนบ้าน → home_* เป็น NULL
  * idempotent: เพิ่มเฉพาะคอลัมน์ที่ยังไม่มี · แถวเดิมได้ค่าเริ่มต้น 1 = พฤติกรรมเดิม (ภูมิลำเนา = ที่อยู่ทะเบียนบ้าน)

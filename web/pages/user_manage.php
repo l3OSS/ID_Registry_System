@@ -104,8 +104,8 @@ $users = $pdo->query($sql)->fetchAll();
                         $is_me = ((int)$u['id'] === $my_id);
                         $target_level = (int)$u['role_level'];
 
-                        // Edit Logic: Level 1 edits everyone | Me | Level 2 edits Level 3
-                        $can_edit = ($my_level === 1) || ($is_me) || ($my_level === 2 && $target_level === 3);
+                        // Edit Logic: Level 1 edits everyone | Me | Level 2 (Admin) edits ระดับต่ำกว่าตน (Regis/Viewer)
+                        $can_edit = ($my_level === 1) || ($is_me) || ($my_level === 2 && $target_level > 2);
                         // Delete Logic: Level 1 only | No self-delete
                         $can_delete = ($my_level === 1 && !$is_me);
                     ?>
@@ -126,7 +126,7 @@ $users = $pdo->query($sql)->fetchAll();
                         </td>
                         <td>
                             <?php 
-                                $badgeClass = ($target_level === 1) ? 'bg-danger' : (($target_level === 2) ? 'bg-primary' : 'bg-info text-dark');
+                                $badgeClass = ($target_level === 1) ? 'bg-danger' : (($target_level === 2) ? 'bg-primary' : (($target_level === 4) ? 'bg-secondary' : 'bg-info text-dark'));
                             ?>
                             <span class="badge rounded-pill <?php echo $badgeClass; ?> mb-1">
                                 <?php echo htmlspecialchars($u['role_name']); ?>
@@ -173,17 +173,21 @@ $users = $pdo->query($sql)->fetchAll();
     <div class="mt-4 p-4 bg-white rounded-4 shadow-sm border">
         <h6 class="fw-bold text-dark mb-3"><i class="bi bi-shield-shaded text-primary"></i> <?php echo e('umanage.roles_info'); ?></h6>
         <div class="row g-4">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="fw-bold text-danger">EngiNear</div>
                 <small class="text-muted"><?php echo e('umanage.role_eng_desc'); ?></small>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="fw-bold text-primary">Admin</div>
                 <small class="text-muted"><?php echo e('umanage.role_admin_desc'); ?></small>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="fw-bold text-info text-dark">Regis</div>
                 <small class="text-muted"><?php echo e('umanage.role_regis_desc'); ?></small>
+            </div>
+            <div class="col-md-3">
+                <div class="fw-bold text-secondary">Viewer</div>
+                <small class="text-muted"><?php echo e('umanage.role_viewer_desc'); ?></small>
             </div>
         </div>
     </div>

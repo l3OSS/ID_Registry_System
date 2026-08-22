@@ -15,6 +15,9 @@ const ROLE_PERMISSIONS = [
     2 => ['users.view', 'users.edit', 'export.excel', 'logs.view',
           'guests.view', 'guests.register', 'guests.delete', 'profile.edit'], // Admin
     3 => ['guests.view', 'logs.view', 'guests.register', 'profile.edit'],       // Regis (งานทะเบียน)
+    // Viewer (ผู้ชมสถิติ/ผู้บริหาร) — เห็นเฉพาะภาพรวม/สถิติรวมบนแดชบอร์ด (ไม่ผูก guests.view จึงไม่เห็น PII)
+    // ไม่มี guests.view/register/delete, export, logs, users — เปิดหน้ารายชื่อ/ประวัติ/ส่งออก = 403
+    4 => ['profile.edit'],
 ];
 
 /**
@@ -36,20 +39,20 @@ const ALL_PERMISSIONS = [
     'settings.manage' => 'ตั้งค่าระบบ (EngiNear เท่านั้น)',
 ];
 
-const ROLE_NAMES = [1 => 'EngiNear', 2 => 'Admin', 3 => 'Regis'];
+const ROLE_NAMES = [1 => 'EngiNear', 2 => 'Admin', 3 => 'Regis', 4 => 'Viewer'];
 
 /**
  * โควตาบัญชีต่อบทบาท — จำนวนสูงสุดที่มีได้ในระบบ (0 = ไม่จำกัด)
  * นโยบาย: EngiNear 1 คน (สร้างตอนติดตั้ง) · Admin 5 คน · Regis ไม่จำกัด
  * บังคับฝั่งเซิร์ฟเวอร์ทุกจุด — การปิด <option> ในฟอร์มเป็นแค่ UX
  */
-const ROLE_QUOTAS = [1 => 1, 2 => 5, 3 => 0];
+const ROLE_QUOTAS = [1 => 1, 2 => 5, 3 => 0, 4 => 0]; // Viewer ไม่จำกัดจำนวน
 
 /**
  * บทบาทที่ "เพิ่มบัญชีใหม่" ได้จากหน้าจัดการทีมงาน
  * EngiNear ไม่อยู่ในรายการ — บัญชีเดียวของระบบถูกสร้างตอนติดตั้งเท่านั้น
  */
-const CREATABLE_ROLES = [2, 3];
+const CREATABLE_ROLES = [2, 3, 4];
 
 /** เพิ่มบัญชีใหม่ในบทบาทนี้ได้ไหม (ไม่เกี่ยวกับโควตา) */
 function isCreatableRole(int $level): bool {

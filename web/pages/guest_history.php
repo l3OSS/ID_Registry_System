@@ -8,8 +8,10 @@
 require_once 'core/auth.php';
 require_once 'core/security.php';
 require_once 'core/functions.php';
+require_once 'core/rbac.php'; // requirePermission — หน้านี้แสดง PII เต็ม (ชื่อ/เลขบัตร/ที่อยู่/สุขภาพ)
 
-checkLogin();
+// แสดงข้อมูลบุคคลแบบเต็ม — ต้องมี guests.view (Viewer ไม่มี → 403 · เดิมเป็นแค่ checkLogin ทำให้ยิง URL ตรงได้)
+requirePermission('guests.view');
 
 // P7: URL ใช้ public_id → เก็บไว้สำหรับสร้างลิงก์ + แปลงเป็น internal id สำหรับ query
 $public_id = preg_replace('/\D/', '', (string)($_GET['id'] ?? ''));
