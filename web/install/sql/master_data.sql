@@ -7589,6 +7589,7 @@ CREATE TABLE IF NOT EXISTS `citizens` (
   `lastname` varchar(100) NOT NULL,
   `gender` enum('Male','Female') DEFAULT NULL,
   `birthdate` date DEFAULT NULL,
+  `birth_year_only` tinyint(1) NOT NULL DEFAULT '0' COMMENT 'รู้เฉพาะปีเกิด → เก็บ YYYY-01-01 แต่แสดง/ส่งออกเฉพาะปี',
   `phone_enc` text,
   `addr_number` varchar(50) DEFAULT NULL,
   `addr_tambon` varchar(150) DEFAULT NULL,

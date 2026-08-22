@@ -201,6 +201,26 @@ function migViewerRole(PDO $pdo, bool $apply = true): string
 }
 
 /**
+ * ปีเกิดอย่างเดียว — เมื่อรู้แค่ปีเกิด (เช่น พ.ศ. 2480) เก็บ birthdate = YYYY-01-01
+ * แล้วตั้งธงนี้ = 1 เพื่อให้หน้าแสดงผล/ส่งออก โชว์เฉพาะปี (อายุยังคำนวณจาก 1 ม.ค. ตามคอลัมน์ date เดิม)
+ * idempotent: เพิ่มเฉพาะเมื่อยังไม่มี · แถวเดิมได้ค่าเริ่มต้น 0 = พฤติกรรมเดิม (มีวัน/เดือนครบ)
+ */
+function migBirthYearOnly(PDO $pdo, bool $apply = true): string
+{
+    $hasCol = (bool)$pdo->query(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'citizens' AND COLUMN_NAME = 'birth_year_only'"
+    )->fetchColumn();
+
+    if (!$hasCol) {
+        if (!$apply) return "birth_year_only: (dry-run) จะเพิ่มคอลัมน์ citizens.birth_year_only";
+        $pdo->exec("ALTER TABLE citizens ADD COLUMN birth_year_only TINYINT(1) NOT NULL DEFAULT 0 AFTER birthdate");
+        return "birth_year_only: เพิ่มคอลัมน์ citizens.birth_year_only แล้ว (ค่าเริ่มต้น = 0)";
+    }
+    return "birth_year_only: มีคอลัมน์ citizens.birth_year_only อยู่แล้ว";
+}
+
+/**
  * ภูมิลำเนา (กล่อง 3 ในหน้าเพิ่มข้อมูล) — เก็บเป็นเลข address_id เหมือนที่อยู่ตามทะเบียนบ้าน
  * home_same_as_reg = 1 (ค่าเริ่มต้น) แปลว่าใช้ที่อยู่ตามทะเบียนบ้าน → home_* เป็น NULL
  * idempotent: เพิ่มเฉพาะคอลัมน์ที่ยังไม่มี · แถวเดิมได้ค่าเริ่มต้น 1 = พฤติกรรมเดิม (ภูมิลำเนา = ที่อยู่ทะเบียนบ้าน)

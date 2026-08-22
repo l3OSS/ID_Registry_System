@@ -68,6 +68,7 @@ if (!$backup_failed) {
         t('inst.upd_step_entity')      => fn() => migEntityTerm($pdo, true),
         t('inst.upd_step_viewer')      => fn() => migViewerRole($pdo, true),
         t('inst.upd_step_home')        => fn() => migHomeAddress($pdo, true),
+        t('inst.upd_step_birthyear')   => fn() => migBirthYearOnly($pdo, true),
         t('inst.upd_step_prefix')      => fn() => migNamePrefix($pdo, true),
         t('inst.upd_step_stay')        => function () use ($pdo) {
             $msg = migStayDenorm($pdo, true);

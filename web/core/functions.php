@@ -163,6 +163,23 @@ function normalizeDateInput(?string $s): ?string {
 }
 
 /**
+ * แปลง/ตรวจ "วันเกิด" ที่ฝั่งหน้าจอแปลงตามสวิตช์ พ.ศ./ค.ศ. มาเป็น ค.ศ. ISO เรียบร้อยแล้ว
+ * ต่างจาก normalizeDateInput(): **ไม่ลบ 543 ซ้ำ** — เพราะสวิตช์บนฟอร์มตัดสินปีให้ครบแล้ว
+ * (ถ้าลบซ้ำ ปีที่ผู้ใช้ตั้งใจเป็น ค.ศ. เช่น 2480 จะเพี้ยนไป 1937)
+ * ทำหน้าที่แค่กันค่าประหลาดจาก <input type=text> · แปลงไม่ได้ = null (เก็บ NULL ดีกว่าทิ้งทั้งเรคคอร์ด)
+ */
+function normalizeBirthdateInput(?string $s): ?string {
+    $s = trim((string)$s);
+    if ($s === '' || $s === '0000-00-00') return null;
+
+    if (preg_match('/^(\d{3,4})-(\d{1,2})-(\d{1,2})/', $s, $m))     { $y = (int)$m[1]; $mo = (int)$m[2]; $d = (int)$m[3]; }
+    elseif (preg_match('#^(\d{1,2})/(\d{1,2})/(\d{3,4})#', $s, $m)) { $d = (int)$m[1]; $mo = (int)$m[2]; $y = (int)$m[3]; }
+    else return null;
+
+    return checkdate($mo, $d, $y) ? sprintf('%04d-%02d-%02d', $y, $mo, $d) : null;
+}
+
+/**
  * แปลงค่าวันที่+เวลาที่ผู้ใช้กรอก → 'Y-m-d H:i:s' · แปลงไม่ได้คืนค่า $fallback
  * ใช้กับคอลัมน์ที่เป็น NOT NULL (เช่น stay_history.check_in) ซึ่งคืน null ไม่ได้
  */

@@ -79,10 +79,14 @@ function saveCitizenAndStay($pdo, $post_data, $old_data = null, $decision = null
         $prefix = $post_data['prefix'] ?? '';
         $firstname = $post_data['firstname'] ?? '';
         $lastname = $post_data['lastname'] ?? '';
-        // ผ่าน normalizeDateInput() ก่อนเสมอ — ช่องนี้เป็น <input type="text"> เบราว์เซอร์ไม่กันค่าประหลาด
+        // ผ่าน normalizeBirthdateInput() ก่อนเสมอ — ช่องนี้เป็น <input type="text"> เบราว์เซอร์ไม่กันค่าประหลาด
         // ถ้าส่งค่าดิบเข้า SQL จะชน 22007 แล้ว INSERT ล้มทั้งแถว (ผู้ใช้เสียข้อมูลที่กรอกมาหมด)
-        // แปลงไม่ได้ = เก็บ NULL ดีกว่าทิ้งทั้งเรคคอร์ด · รองรับ พ.ศ. ให้ด้วยในตัว
-        $birthdate = normalizeDateInput($post_data['birthdate'] ?? null);
+        // หน้าจอแปลงตามสวิตช์ พ.ศ./ค.ศ. มาเป็น ค.ศ. ISO แล้ว → ที่นี่ห้ามลบ 543 ซ้ำ (ดูคอมเมนต์ในฟังก์ชัน)
+        // แปลงไม่ได้ = เก็บ NULL ดีกว่าทิ้งทั้งเรคคอร์ด
+        $birthdate = normalizeBirthdateInput($post_data['birthdate'] ?? null);
+        // ธง "รู้เฉพาะปีเกิด" (ฟอร์มตั้งเป็น 1 เมื่อพิมพ์เฉพาะปี → birthdate = YYYY-01-01)
+        // ไม่มีวันเกิด = ไม่ถือว่ารู้เฉพาะปี (กันธงค้างเมื่อ birthdate ถูกล้างเป็น NULL)
+        $birth_year_only = (!empty($post_data['birth_year_only']) && $birthdate !== null) ? 1 : 0;
         
         $gender_input = $post_data['gender'] ?? '';
         $gender = null;
@@ -168,19 +172,19 @@ if ($age !== null) {
         if (!$old_data) {
             // ส่วน INSERT สำหรับคนใหม่ (P7: กำหนด public_id 13 หลักไม่ซ้ำ)
             $public_id = generatePublicId($pdo);
-            $sql = "INSERT INTO citizens (public_id, id_card_hash, id_card_enc, id_card_last4, prefix, firstname, lastname, gender, birthdate, address_id, addr_number, home_same_as_reg, home_address_id, home_addr_number, phone_enc, medical_info, notes, photo_path)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $sql = "INSERT INTO citizens (public_id, id_card_hash, id_card_enc, id_card_last4, prefix, firstname, lastname, gender, birthdate, birth_year_only, address_id, addr_number, home_same_as_reg, home_address_id, home_addr_number, phone_enc, medical_info, notes, photo_path)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             $stmt = $pdo->prepare($sql);
-            $stmt->execute([$public_id, $id_card_hash, $id_card_enc, $id_card_last4, $prefix, $firstname, $lastname, $gender, $birthdate, $address_id, $post_data['addr_number'], $home_same, $home_address_id, $home_addr_number, $phone_enc, $medical_info, $notes, $file_path_db]);
+            $stmt->execute([$public_id, $id_card_hash, $id_card_enc, $id_card_last4, $prefix, $firstname, $lastname, $gender, $birthdate, $birth_year_only, $address_id, $post_data['addr_number'], $home_same, $home_address_id, $home_addr_number, $phone_enc, $medical_info, $notes, $file_path_db]);
             $citizen_id = $pdo->lastInsertId();
         } else {
             $citizen_id = $old_data['id'];
 
             if ($decision == 'update') {
                 // บันทึกเฉพาะเลข ID ที่อยู่ และเลขที่บ้านเท่านั้น
-                $sql = "UPDATE citizens SET prefix=?, firstname=?, lastname=?, gender=?, birthdate=?, address_id=?, addr_number=?, home_same_as_reg=?, home_address_id=?, home_addr_number=?, phone_enc=?, medical_info=?, notes=?, photo_path=?, id_card_last4=?, updated_at=NOW()
+                $sql = "UPDATE citizens SET prefix=?, firstname=?, lastname=?, gender=?, birthdate=?, birth_year_only=?, address_id=?, addr_number=?, home_same_as_reg=?, home_address_id=?, home_addr_number=?, phone_enc=?, medical_info=?, notes=?, photo_path=?, id_card_last4=?, updated_at=NOW()
                         WHERE id=?";
-                $pdo->prepare($sql)->execute([$prefix, $firstname, $lastname, $gender, $birthdate, $address_id, $post_data['addr_number'], $home_same, $home_address_id, $home_addr_number, $phone_enc, $medical_info, $notes, $file_path_db, $id_card_last4, $citizen_id]);
+                $pdo->prepare($sql)->execute([$prefix, $firstname, $lastname, $gender, $birthdate, $birth_year_only, $address_id, $post_data['addr_number'], $home_same, $home_address_id, $home_addr_number, $phone_enc, $medical_info, $notes, $file_path_db, $id_card_last4, $citizen_id]);
                 $log_action = "UPDATE_CITIZEN";
             }
         }

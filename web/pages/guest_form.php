@@ -138,15 +138,30 @@ if ($id > 0) {
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label"><?php echo e('form.birthdate'); ?></label>
-                                <input type="text" name="birthdate" id="birthdate" class="form-control thai-date" placeholder="<?php echo e('form.birthdate_ph'); ?>" value="<?php echo htmlspecialchars($citizen['birthdate'] ?? ''); ?>">
+                                <div class="input-group">
+                                    <?php /* ค่า value ต้องว่างไว้ — JS เติมผ่าน defaultDate (Date object) กัน flatpickr แปลง ISO ผิด era */ ?>
+                                    <input type="text" name="birthdate" id="birthdate" class="form-control thai-date" placeholder="<?php echo e('form.birthdate_ph'); ?>" value="" autocomplete="off">
+                                    <?php /* สวิตช์ พ.ศ./ค.ศ. — พ.ศ. เป็นค่าเริ่มต้น (btn-check radio, backend ไม่พึ่งค่านี้ ใช้ซ้ำตอน round-trip) */ ?>
+                                    <input type="radio" class="btn-check" name="birthdate_era" id="era_be" value="be" autocomplete="off" checked>
+                                    <label class="btn btn-outline-primary" for="era_be"><?php echo e('form.era_be'); ?></label>
+                                    <input type="radio" class="btn-check" name="birthdate_era" id="era_ce" value="ce" autocomplete="off">
+                                    <label class="btn btn-outline-primary" for="era_ce"><?php echo e('form.era_ce'); ?></label>
+                                </div>
+                                <input type="hidden" name="birth_year_only" id="birth_year_only" value="<?php echo (int)($citizen['birth_year_only'] ?? 0); ?>">
+                                <div class="form-text small"><?php echo e('form.birthdate_hint'); ?></div>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label text-primary fw-bold"><?php echo e('form.gender'); ?></label>
-                                <select name="gender" id="gender" class="form-select border-primary">
-                                    <option value=""><?php echo e('form.gender_ph'); ?></option>
-                                    <option value="Male" <?php echo (($citizen['gender'] ?? '') =='Male') ? 'selected' : ''; ?>><?php echo e('common.male'); ?></option>
-                                    <option value="Female" <?php echo (($citizen['gender'] ?? '') =='Female') ? 'selected' : ''; ?>><?php echo e('common.female'); ?></option>
-                                </select>
+                                <label class="form-label text-primary fw-bold d-block"><?php echo e('form.gender'); ?></label>
+                                <?php /* เพศ: segmented (btn-check) แบบเดียวกับสวิตช์ พ.ศ./ค.ศ. — ค่า submit คง ''/Male/Female เดิม (guest_check map แล้ว) · "ไม่ระบุ" เป็นค่าเริ่มต้น */ ?>
+                                <?php $g_now = $citizen['gender'] ?? ''; ?>
+                                <div class="btn-group w-100" role="group" aria-label="<?php echo e('form.gender'); ?>">
+                                    <input type="radio" class="btn-check" name="gender" id="gender_none" value="" autocomplete="off" <?php echo ($g_now === 'Male' || $g_now === 'Female') ? '' : 'checked'; ?>>
+                                    <label class="btn btn-outline-primary" for="gender_none"><?php echo e('form.gender_none'); ?></label>
+                                    <input type="radio" class="btn-check" name="gender" id="gender_male" value="Male" autocomplete="off" <?php echo ($g_now === 'Male') ? 'checked' : ''; ?>>
+                                    <label class="btn btn-outline-primary" for="gender_male"><?php echo e('common.male'); ?></label>
+                                    <input type="radio" class="btn-check" name="gender" id="gender_female" value="Female" autocomplete="off" <?php echo ($g_now === 'Female') ? 'checked' : ''; ?>>
+                                    <label class="btn btn-outline-primary" for="gender_female"><?php echo e('common.female'); ?></label>
+                                </div>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label"><?php echo e('form.phone'); ?></label>
@@ -381,6 +396,52 @@ const L = <?php echo json_encode([
     'cancel'             => t('btn.cancel'),
 ], JSON_UNESCAPED_UNICODE); ?>;
 
+/* ---------- สถานะช่องวันเกิด (พ.ศ./ค.ศ. + รู้เฉพาะปี) ---------- */
+// era ตั้งต้น = พ.ศ. เสมอ (เราไม่เก็บว่าผู้ใช้กรอกด้วย era ไหน — birthdate เก็บเป็น ค.ศ. ISO)
+window._birthEra      = 'be';
+// ธง "รู้เฉพาะปีเกิด" — โหลดจากค่าที่บันทึกไว้ (แก้ไข) เพื่อให้แสดงเฉพาะปีตั้งแต่เปิดหน้า
+window._birthYearOnly = <?php echo !empty($citizen['birth_year_only']) ? 'true' : 'false'; ?>;
+// ธงชั่วคราวสื่อสารระหว่าง parseDate → onChange ว่าการเปลี่ยนล่าสุดมาจากการ "พิมพ์" (ไม่ใช่ปฏิทิน)
+window._parseDidRun    = false;
+window._pendingYearOnly = false;
+// วันเกิดเดิม (ค.ศ. ISO) สำหรับ setDate ตอนแก้ไข — ว่าง = ยังไม่มี
+window._birthInit = <?php echo (!empty($citizen['birthdate']) && $citizen['birthdate'] !== '0000-00-00') ? json_encode((string)$citizen['birthdate']) : 'null'; ?>;
+
+// "YYYY-MM-DD" (ค.ศ.) → Date object · ส่ง Date ให้ flatpickr เพื่อ "ไม่" ให้ผ่าน parseDate (กันลบ 543 ผิด)
+function isoToDate(iso) {
+    const m = String(iso).match(/^(\d{3,4})-(\d{1,2})-(\d{1,2})/);
+    if (!m) return null;
+    const dt = new Date(+m[1], +m[2] - 1, +m[3]);
+    return isNaN(dt.getTime()) ? null : dt;
+}
+
+// offset/รูปเลข ตาม era ปัจจุบัน: พ.ศ. = +543 เลขไทย · ค.ศ. = +0 เลขอารบิก
+function birthEraCfg() {
+    return (window._birthEra === 'ce') ? { off: 0, thai: false } : { off: 543, thai: true };
+}
+
+// สร้าง flatpickr ช่องวันเกิดใหม่ตาม era ปัจจุบัน (เรียกซ้ำได้ตอนสลับสวิตช์)
+function buildBirthDate(initialDate) {
+    const c = birthEraCfg();
+    const fp = initThaiDate('#birthdate', {
+        eraOffset: c.off, eraDigits: c.thai, detectYearOnly: true,
+        onChange: function (sel, _dateStr, inst) {
+            // ตัดสินธง year-only: พิมพ์ → ตามที่ parseDate จับได้ · เลือกปฏิทิน (ไม่ผ่าน parseDate) → วันเต็มเสมอ
+            window._birthYearOnly = window._parseDidRun ? window._pendingYearOnly : false;
+            window._parseDidRun = false;
+            document.getElementById('birth_year_only').value = window._birthYearOnly ? '1' : '0';
+            if (sel && sel[0] && inst) {
+                // เรนเดอร์ช่องแสดงผลใหม่ตามธงที่เพิ่งตัดสิน (formatDate อ่าน flag แล้ว)
+                inst.altInput.value = inst.formatDate(sel[0], inst.config.altFormat);
+                const d = sel[0];
+                autoCheckAge(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'));
+            }
+        }
+    });
+    if (initialDate) fp.setDate(initialDate, false); // Date object → ไม่ผ่าน parseDate · false = ไม่ยิง onChange
+    return fp;
+}
+
 // 1. Initializations
 $(document).ready(function() {
     // ฟังก์ชันกลางสำหรับหา Address ID เพื่อลดความซ้ำซ้อนของโค้ด
@@ -510,12 +571,26 @@ $(document).ready(function() {
         syncHome();
     }
 
-    // วันที่ทั้งหมดแสดงเป็น พ.ศ. (เลขไทย) แต่ค่าที่ submit/เก็บ DB ยังเป็น ค.ศ. ISO (ดู initThaiDate)
-    document.querySelectorAll('.thai-date').forEach(function (el) {
-        const opts = {};
-        // วันเกิด: เปลี่ยนแล้วให้ auto-check กลุ่มเปราะบางตามอายุ (เด็ก/ผู้สูงอายุ)
-        if (el.id === 'birthdate') opts.onChange = function (_sel, str) { autoCheckAge(str); };
-        initThaiDate(el, opts);
+    // วันเกิด: อิงสวิตช์ พ.ศ./ค.ศ. + รองรับ "พิมพ์เฉพาะปี" → 1 ม.ค. (ธง birth_year_only)
+    // ค่าที่ submit/เก็บ DB เป็น ค.ศ. ISO เสมอ (อายุคำนวณจากคอลัมน์นี้ทั้งระบบ) — สวิตช์เป็นเรื่องอินพุต/แสดงผลล้วน ๆ
+    buildBirthDate(window._birthInit ? isoToDate(window._birthInit) : null);
+
+    // สลับสวิตช์ พ.ศ.↔ค.ศ.: คงตัวเลขปีที่เห็นเดิม แล้วเปลี่ยนความหมายตาม era ใหม่ (เลื่อนปี ค.ศ. ภายใน ±543)
+    document.querySelectorAll('input[name="birthdate_era"]').forEach(function (r) {
+        r.addEventListener('change', function () {
+            const newEra = this.value; // 'be' | 'ce'
+            if (newEra === window._birthEra) return;
+            const fp = window._fpDates.birthdate;
+            let keep = null;
+            if (fp && fp.selectedDates && fp.selectedDates[0]) {
+                const d0 = fp.selectedDates[0];
+                const shift = (newEra === 'ce') ? 543 : -543; // be→ce +543, ce→be -543 (เลขบนจอคงเดิม)
+                keep = new Date(d0.getFullYear() + shift, d0.getMonth(), d0.getDate());
+            }
+            window._birthEra = newEra;
+            if (fp) fp.destroy();
+            buildBirthDate(keep); // สร้างใหม่ด้วย offset ของ era ใหม่ (ธง year-only คงเดิม)
+        });
     });
 
     // เช็คอิน: วันที่+เวลา แสดงเป็น พ.ศ. — แก้ไข = วันเข้าพักเดิม, เพิ่มใหม่ = ตอนนี้
@@ -554,16 +629,26 @@ async function readSmartCard() {
         setVal('firstname', data.Firstname || '');
         setVal('lastname', data.Lastname || '');
         setVal('prefix', data.Prefix || '');
-        // บัตร/Reg.exe คืนวันเกิดเป็น MM/DD/YYYY → แปลงเป็น ค.ศ. ISO แล้วเซ็ตผ่าน flatpickr (แสดงผลเป็น พ.ศ.)
+        // บัตร/Reg.exe คืนวันเกิดเป็น MM/DD/YYYY → แปลงเป็น ค.ศ. ISO แล้วเซ็ตผ่าน flatpickr (แสดงผลตาม era ที่เลือก)
+        // 🔎 ทดสอบเครื่องอ่านบัตร: log ค่าดิบไว้ดูว่า Reg.exe ส่งวันเกิดมาเป็น พ.ศ. หรือ ค.ศ. รูปแบบใด
+        console.log('[SmartCard] BirthDate ดิบจากเครื่องอ่าน =', JSON.stringify(data.BirthDate), '→ ค.ศ. ISO =', normalizeBirthDate(data.BirthDate));
         const birthISO = normalizeBirthDate(data.BirthDate);
-        if (window._fpDates && window._fpDates.birthdate) window._fpDates.birthdate.setDate(birthISO, true);
+        // อ่านบัตร = ได้วันเต็มเสมอ → ปิดธง "รู้เฉพาะปี" · ส่ง Date object ไม่ให้ผ่าน parseDate (กันลบ 543 ผิด era)
+        window._birthYearOnly = false;
+        document.getElementById('birth_year_only').value = '0';
+        window._parseDidRun = false;
+        const birthDateObj = isoToDate(birthISO);
+        if (window._fpDates && window._fpDates.birthdate && birthDateObj) window._fpDates.birthdate.setDate(birthDateObj, true);
         else setVal('birthdate', birthISO);
 
         // ตรวจสอบเพศ
         let rawGender = data.Gender ? data.Gender.toString().trim() : "";
         let detectedGender = (rawGender == "1" || rawGender.toLowerCase() === "male" || rawGender === "ชาย") ? "Male" :
                              (rawGender == "2" || rawGender.toLowerCase() === "female" || rawGender === "หญิง") ? "Female" : "";
-        setVal('gender', detectedGender);
+        // เพศเป็น segmented (btn-check) แล้ว — เลือกปุ่มให้ตรงแทนการเซ็ต .value ของ <select> เดิม
+        const genderId = detectedGender === 'Male' ? 'gender_male' : detectedGender === 'Female' ? 'gender_female' : 'gender_none';
+        const genderEl = document.getElementById(genderId);
+        if (genderEl) genderEl.checked = true;
        
         // ที่อยู่ (Text fields)
         setVal('addr_number', (data.HouseNo || '') + (data.Moo ? ` ${L.moo} ${data.Moo.replace(/\D/g,'')}` : ''));
@@ -715,42 +800,58 @@ function toThaiDigits(s) {
 const THAI_MONTHS_ABBR = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
 window._fpDates = {};
 function initThaiDate(target, opts) {
+    opts = opts || {};
+    // era ของช่องนี้: eraOffset = ปีที่แสดง − ปี ค.ศ. (พ.ศ.=543, ค.ศ.=0) · ค่าปริยาย 543 (ช่องอื่นแสดง พ.ศ. เสมอ)
+    const eraOffset = (typeof opts.eraOffset === 'number') ? opts.eraOffset : 543;
+    const eraThai   = (opts.eraDigits === false) ? false : true;   // false = เลขอารบิก (โหมด ค.ศ.)
+    const detectYO  = !!opts.detectYearOnly;                        // true = ช่องวันเกิด (รองรับพิมพ์เฉพาะปี)
+    const digitize  = eraThai ? toThaiDigits : (x => String(x));
+
     const cfg = Object.assign({
         dateFormat: "Y-m-d",   // ค่าที่เก็บ = ค.ศ. ISO
         altInput: true,
-        altFormat: "THAI",     // ค่าที่แสดง = พ.ศ. (sentinel)
+        altFormat: "THAI",     // ค่าที่แสดง = พ.ศ./ค.ศ. (sentinel)
         locale: "th",
         // เดิมช่องเป็น readonly (allowInput=false) เลือกได้จากปฏิทินอย่างเดียว — วันเกิดย้อนหลังหลายสิบปี
         // เลื่อนทีละเดือนลำบาก คนกรอกจึง "พิมพ์" ซึ่งไม่เข้า แล้วบันทึกเป็น NULL เงียบ ๆ
-        // เปิดให้พิมพ์ได้ + parseDate รองรับเลขไทย/พ.ศ./ค.ศ. (ปฏิทินยังใช้ได้ตามเดิม)
+        // เปิดให้พิมพ์ได้ + parseDate รองรับเลขไทย + แปลงปีตาม era ที่เลือก (ปฏิทินยังใช้ได้ตามเดิม)
         allowInput: true,
         parseDate: function (datestr, format) {
-            // เลขไทย → อารบิก แล้วจับรูปแบบ ปปปป-ดด-วว(+เวลา) หรือ วว/ดด/ปปปป(+เวลา)
+            // เลขไทย → อารบิก แล้วจับรูปแบบ: (เฉพาะปี) / ปปปป-ดด-วว(+เวลา) / วว/ดด/ปปปป(+เวลา)
             const s = String(datestr).replace(/[๐-๙]/g, d => "๐๑๒๓๔๕๖๗๘๙".indexOf(d)).trim();
             let y, mo, d, hh = 0, mi = 0, m;
-            if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?/))) {
+            if (detectYO && (m = s.match(/^(\d{3,4})$/))) {          // พิมพ์เฉพาะปี → 1 ม.ค.
+                y = +m[1]; mo = 1; d = 1;
+                window._pendingYearOnly = true; window._parseDidRun = true;
+            } else if ((m = s.match(/^(\d{3,4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?/))) {
                 y = +m[1]; mo = +m[2]; d = +m[3]; if (m[4] != null) { hh = +m[4]; mi = +m[5]; }
-            } else if ((m = s.match(/^(\d{1,2})[\/\-.\s]+(\d{1,2})[\/\-.\s]+(\d{4})(?:[ ,]+(\d{1,2}):(\d{2}))?/))) {
+                if (detectYO) { window._pendingYearOnly = false; window._parseDidRun = true; }
+            } else if ((m = s.match(/^(\d{1,2})[\/\-.\s]+(\d{1,2})[\/\-.\s]+(\d{3,4})(?:[ ,]+(\d{1,2}):(\d{2}))?/))) {
                 d = +m[1]; mo = +m[2]; y = +m[3]; if (m[4] != null) { hh = +m[4]; mi = +m[5]; }
+                if (detectYO) { window._pendingYearOnly = false; window._parseDidRun = true; }
             } else {
                 return undefined;   // อ่านไม่ออก = ไม่เดา (flatpickr จะไม่ตั้งค่า)
             }
-            if (y > 2400) y -= 543;                 // พ.ศ. → ค.ศ.
+            y -= eraOffset;         // ปีที่แสดง → ค.ศ. (พ.ศ. ลบ 543 · ค.ศ. ลบ 0) — ยึดสวิตช์ ไม่เดาจากเลข
             const dt = new Date(y, mo - 1, d, hh, mi);
             return isNaN(dt.getTime()) ? undefined : dt;
         },
-        onReady: function (_s, _d, fp) { installBuddhistYear(fp); }, // หัวปฏิทินโชว์ปี พ.ศ.
+        onReady: function (_s, _d, fp) { installBuddhistYear(fp, eraOffset); }, // หัวปฏิทินโชว์ปีตาม era
         formatDate: function (date, format) {
             const p = function (n) { return String(n).padStart(2, '0'); };
-            const thaiD = toThaiDigits(date.getDate() + " " + THAI_MONTHS_ABBR[date.getMonth()] + " " + (date.getFullYear() + 543));
-            if (format === "THAI")     return thaiD;
-            if (format === "THAITIME") return thaiD + " (" + toThaiDigits(p(date.getHours()) + ":" + p(date.getMinutes())) + " น.)";
+            const yr = date.getFullYear() + eraOffset;   // ค.ศ. → ปีที่แสดง
+            if (format === "THAI") {
+                // ช่องวันเกิดโหมด "รู้เฉพาะปี" → โชว์เฉพาะปี (ไม่โชว์ 1 ม.ค. ที่เป็นแค่ค่าคำนวณอายุ)
+                if (detectYO && window._birthYearOnly) return digitize(yr);
+                return digitize(date.getDate() + " " + THAI_MONTHS_ABBR[date.getMonth()] + " " + yr);
+            }
+            if (format === "THAITIME") return digitize(date.getDate() + " " + THAI_MONTHS_ABBR[date.getMonth()] + " " + yr) + " (" + digitize(p(date.getHours()) + ":" + p(date.getMinutes())) + " น.)";
             // ค่าที่เก็บ (ค.ศ. อารบิก) — รองรับทั้งวันที่ล้วนและวันที่+เวลา
             let s = date.getFullYear() + "-" + p(date.getMonth() + 1) + "-" + p(date.getDate());
             if (String(format).indexOf("H:i") !== -1) s += " " + p(date.getHours()) + ":" + p(date.getMinutes());
             return s;
         }
-    }, opts || {});
+    }, opts);
     const el = (typeof target === 'string') ? document.querySelector(target) : target;
     if (!el) return null;
     const fp = flatpickr(el, cfg);
@@ -758,10 +859,11 @@ function initThaiDate(target, opts) {
     return fp;
 }
 
-// หัวปฏิทิน flatpickr แสดง "ปี" เป็น พ.ศ. โดยที่สถานะภายใน flatpickr ยังเป็น ค.ศ. เสมอ
+// หัวปฏิทิน flatpickr แสดง "ปี" ตาม era (พ.ศ. บวก 543 · ค.ศ. ตามจริง) โดยสถานะภายใน flatpickr ยังเป็น ค.ศ. เสมอ
 // วิธีการ: ครอบ property .value ของช่องปี — flatpickr อ่านได้ ค.ศ. (เขียน/พิมพ์/เลื่อน/สกอลล์ทำงานตามปกติ)
-// แต่ตัวเลขที่แสดงบนจอถูกบวก 543 (getter ลบกลับ 543 ให้ flatpickr เห็นเป็น ค.ศ.)
-function installBuddhistYear(fp) {
+// แต่ตัวเลขที่แสดงบนจอถูกบวก offset (getter ลบกลับ offset ให้ flatpickr เห็นเป็น ค.ศ.)
+function installBuddhistYear(fp, eraOffset) {
+    const off = (typeof eraOffset === 'number') ? eraOffset : 543;
     const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
     (fp.yearElements || []).forEach(function (y) {
         if (!y || y._beWrapped) return;
@@ -769,16 +871,16 @@ function installBuddhistYear(fp) {
         Object.defineProperty(y, 'value', {
             configurable: true,
             get: function () {
-                const n = parseInt(desc.get.call(this), 10);      // ค่าบนจอ = พ.ศ.
-                return isNaN(n) ? desc.get.call(this) : String(n - 543); // คืน ค.ศ. ให้ flatpickr
+                const n = parseInt(desc.get.call(this), 10);      // ค่าบนจอ = ปีตาม era
+                return isNaN(n) ? desc.get.call(this) : String(n - off); // คืน ค.ศ. ให้ flatpickr
             },
             set: function (v) {
                 const n = parseInt(v, 10);                        // flatpickr ส่ง ค.ศ. มา
-                desc.set.call(this, isNaN(n) ? v : String(n + 543)); // เขียนลงจอเป็น พ.ศ.
+                desc.set.call(this, isNaN(n) ? v : String(n + off)); // เขียนลงจอเป็นปีตาม era
             }
         });
-        // ค่าที่ flatpickr เซ็ตไว้ตอนสร้าง (ยังเป็น ค.ศ. ดิบ ก่อนมี wrapper) → แปลงเป็น พ.ศ.
-        desc.set.call(y, String(fp.currentYear + 543));
+        // ค่าที่ flatpickr เซ็ตไว้ตอนสร้าง (ยังเป็น ค.ศ. ดิบ ก่อนมี wrapper) → แปลงเป็นปีตาม era
+        desc.set.call(y, String(fp.currentYear + off));
     });
 }
 
@@ -846,12 +948,18 @@ function autoCheckAge(birthDateStr) {
 
 // 4. Tablet Synchronization
 async function sendToTablet() {
+    // วันเกิดที่ส่งจอผู้พัก: ปกติส่ง ค.ศ. ISO · โหมด "รู้เฉพาะปี" ส่งปี พ.ศ. 4 หลัก
+    // (sync_send.php เติม "พ.ศ. " ให้เองเมื่อได้ค่ายาว 4 ตัว) เพื่อให้จอโชว์เฉพาะปีตามที่บันทึก
+    let birthOut = $('#birthdate').val();
+    if (document.getElementById('birth_year_only').value === '1' && /^\d{3,4}-/.test(birthOut)) {
+        birthOut = String(parseInt(birthOut.slice(0, 4), 10) + 543);
+    }
     const formData = {
         prefix: $('#prefix').val(),
         fname: $('#firstname').val(),
         lname: $('#lastname').val(),
         idCard: $('#id_card').val(),
-        birthdate: $('#birthdate').val(),
+        birthdate: birthOut,
         addr_number: $('#addr_number').val(),
         addr_tambon: $('#addr_tambon').val(),
         addr_amphoe: $('#addr_amphoe').val(),
