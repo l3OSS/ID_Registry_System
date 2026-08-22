@@ -275,6 +275,8 @@ var L = <?php echo json_encode([
     'del_confirm' => t('hist.js_del_confirm'),
     'cancel'      => t('btn.cancel'),
 ], JSON_UNESCAPED_UNICODE); ?>;
+// guest_delete.php รับเฉพาะ POST + csrf token แล้ว (กัน CSRF ลบถาวรผ่าน URL) — ส่งด้วยฟอร์มแทน location.href
+var CSRF_TOKEN = <?php echo json_encode(csrf_token()); ?>;
 function confirmDelete(id) {
     Swal.fire({
         title: L.del_title,
@@ -288,7 +290,16 @@ function confirmDelete(id) {
         reverseButtons: true
     }).then((result) => {
         if (result.isConfirmed) {
-            window.location.href = `pages/guest_delete.php?id=${id}`;
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = 'pages/guest_delete.php';
+            form.innerHTML =
+                '<input type="hidden" name="id">' +
+                '<input type="hidden" name="csrf_token">';
+            form.querySelector('[name=id]').value = id;
+            form.querySelector('[name=csrf_token]').value = CSRF_TOKEN;
+            document.body.appendChild(form);
+            form.submit();
         }
     });
 }

@@ -10,17 +10,32 @@ require_once __DIR__ . '/../core/auth.php';
 require_once __DIR__ . '/../core/rbac.php'; // ระบบสิทธิ์แบบ permission
 require_once __DIR__ . '/../core/log.php';
 require_once __DIR__ . '/../core/functions.php'; // resolveCitizenId (P7)
+require_once __DIR__ . '/../core/csrf.php';       // ไฟล์นี้ถูก POST ตรง ไม่ผ่าน router จึงต้องตรวจเอง
 require_once __DIR__ . '/../core/stats.php';       // ตัวนับแดชบอร์ด (active/กลุ่มเปราะบาง)
 
 // --- 2. Security & Permission Check ---
 requirePermission('guests.delete'); // EngiNear + Admin
+
+/**
+ * 🛡️ เดิมหน้านี้รับ id ทาง **GET** และมีแค่ requirePermission() — เป็นการลบถาวรที่เรียกได้ด้วย URL เปล่า ๆ
+ * แค่ฝัง <img src=".../guest_delete.php?id=123"> ไว้หน้าไหนก็ได้ แล้ว Admin/EngiNear ที่ล็อกอินค้าง
+ * เปิดเจอ = ลบผู้พัก + รูป + ประวัติเข้าพักถาวรโดยไม่มีใครกดยืนยัน (CSRF · ร้ายกว่า checkout เพราะกู้คืนไม่ได้)
+ *
+ * แก้เป็น: รับเฉพาะ POST + ตรวจ csrf token — แนวเดียวกับ checkout_save.php/guest_check.php ที่ถูก POST ตรงเหมือนกัน
+ * (GET ไม่ควรเปลี่ยนสถานะข้อมูลตามหลัก HTTP · prefetch/crawler ของเบราว์เซอร์ก็ยิงโดนได้)
+ */
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+    header('Location: ../index.php?page=guest_list');
+    exit();
+}
+csrf_verify();
 
 // ปิดการแสดงผลข้อความ Error สดๆ เพื่อความปลอดภัย (Security by Obscurity)
 error_reporting(0);
 ini_set('display_errors', 0);
 
 // P7: URL ใช้ public_id → แปลงเป็น internal id
-$citizen_id = resolveCitizenId($pdo, preg_replace('/\D/', '', (string)($_GET['id'] ?? '')));
+$citizen_id = resolveCitizenId($pdo, preg_replace('/\D/', '', (string)($_POST['id'] ?? '')));
 
 if ($citizen_id > 0) {
     try {
