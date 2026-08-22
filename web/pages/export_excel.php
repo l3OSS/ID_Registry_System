@@ -124,6 +124,10 @@ $rowAddr = function (array $r) use ($cell): array {
     $reg = [$r['addr_number'] ?? '', $r['lookup_tambon'] ?? $r['addr_tambon'] ?? '', $r['lookup_amphoe'] ?? $r['addr_amphoe'] ?? '',
             $r['lookup_province'] ?? $r['addr_province'] ?? '', $r['lookup_zipcode'] ?? ''];
     $home = [$r['home_addr_number'] ?? '', $r['home_tambon'] ?? '', $r['home_amphoe'] ?? '', $r['home_province'] ?? '', $r['home_zipcode'] ?? ''];
+    // สวิตช์ "เหมือนที่อยู่ตามทะเบียนบ้าน" เปิด → home_* เก็บเป็น NULL จึง fallback ใช้ที่อยู่ตามทะเบียนบ้าน (ให้ตรงกับ pickDisplayAddress ในหน้าอื่น)
+    $hasHome = false;
+    foreach ($home as $hv) { if (trim((string)$hv) !== '') { $hasHome = true; break; } }
+    if (!$hasHome) $home = $reg;
     return array_map(fn($v) => (string)$cell($v), array_merge($reg, $home));
 };
 
