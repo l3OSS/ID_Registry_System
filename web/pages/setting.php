@@ -115,7 +115,7 @@ function performSystemReset(PDO $pdo, int $keepUserId): void
             'reset'          => true,
         ], JSON_UNESCAPED_UNICODE);
         $pdo->prepare(
-            "UPDATE settings SET app_name = 'Reg System', site_subtitle = NULL, logo_path = NULL, pdpa_enabled = 1, site_url = NULL, qr_ip = '192.168.1.50', install_log = ? WHERE id = 1"
+            "UPDATE settings SET app_name = 'Reg System', site_subtitle = NULL, entity_term = NULL, logo_path = NULL, pdpa_enabled = 1, site_url = NULL, qr_ip = '192.168.1.50', install_log = ? WHERE id = 1"
         )->execute([$install_log]);
 
         $pdo->exec("SET @allow_log_purge = 0");
@@ -188,6 +188,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reset_system'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_general'])) {
     $app_name = trim($_POST['app_name'] ?? '');
     $subtitle = trim($_POST['site_subtitle'] ?? '');
+    // คำเรียกหน่วยข้อมูลหลัก (configurable terminology) — ว่าง = กลับไปใช้คำเริ่มต้นจากไฟล์ภาษา
+    $entity   = trim($_POST['entity_term'] ?? '');
     $row = $pdo->query("SELECT id, logo_path FROM settings ORDER BY id ASC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
     $sid       = (int)($row['id'] ?? 1);
     $logo_path = $row['logo_path'] ?? null;
@@ -211,8 +213,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_general'])) {
     if ($app_name === '') {
         $_SESSION['error_msg'] = t('set.err_app_name');
     } else {
-        $pdo->prepare("UPDATE settings SET app_name = ?, site_subtitle = ?, logo_path = ? WHERE id = ?")
-            ->execute([$app_name, $subtitle, $logo_path, $sid]);
+        $pdo->prepare("UPDATE settings SET app_name = ?, site_subtitle = ?, entity_term = ?, logo_path = ? WHERE id = ?")
+            ->execute([$app_name, $subtitle, ($entity !== '' ? $entity : null), $logo_path, $sid]);
         writeLog($pdo, 'UPDATE_SETTINGS', "อัปเดตหัวเว็บ: $app_name");
         if (empty($_SESSION['error_msg'])) $_SESSION['success_msg'] = t('set.header_saved');
     }
@@ -267,13 +269,20 @@ $fields = $pdo->query("SELECT * FROM custom_field_master ORDER BY id ASC")->fetc
         <div class="card-body p-4">
             <form method="POST" enctype="multipart/form-data" class="row g-3 align-items-end">
                 <?= csrf_field() ?>
-                <div class="col-md-5">
+                <div class="col-md-4">
                     <label class="form-label small fw-bold"><?php echo e('set.app_name_label'); ?></label>
                     <input type="text" name="app_name" class="form-control" value="<?= htmlspecialchars($s['app_name']) ?>" required>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label small fw-bold"><?php echo e('set.subtitle_label'); ?></label>
                     <input type="text" name="site_subtitle" class="form-control" value="<?= htmlspecialchars($s['site_subtitle']) ?>">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold"><?php echo e('set.entity_label'); ?></label>
+                    <input type="text" name="entity_term" class="form-control" maxlength="100"
+                           value="<?= htmlspecialchars($s['entity_term'] ?? '') ?>"
+                           placeholder="<?= e('entity.default') ?>">
+                    <div class="form-text small"><?php echo e('set.entity_help'); ?></div>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label small fw-bold"><?php echo e('set.logo_label'); ?></label>

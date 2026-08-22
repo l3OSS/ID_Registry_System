@@ -50,6 +50,13 @@ if (file_exists('config/db.php')) {
     require_once 'core/tx.php';
     require_once 'core/rbac.php';
 
+    // Configurable terminology: ฉีดคำเรียกหน่วยข้อมูลหลัก (settings.entity_term) เข้า t() ทั้ง request
+    // ว่าง = t() ใช้ fallback 'entity.default' จากไฟล์ภาษาเอง
+    if (isset($pdo)) {
+        $__entity = appSettings($pdo)['entity_term'] ?? '';
+        if ($__entity !== '') langSetGlobal('entity', $__entity);
+    }
+
     // P2/S2: ตรวจ CSRF ทุก POST ที่ผ่าน router (login, user_*, setting, profile, log_viewer ฯลฯ)
     // หมายเหตุ: guest_check.php และ api/sync_* ถูก POST ตรง ไม่ผ่านจุดนี้ — ตรวจในไฟล์เอง
     csrf_verify();

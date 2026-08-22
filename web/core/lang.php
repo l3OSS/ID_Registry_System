@@ -44,13 +44,40 @@ function langLoad(string $code = LANG_DEFAULT): array
 }
 
 /**
+ * ตัวแปรระดับ request ที่ถูกฉีดเข้า t() ทุกครั้ง (configurable terminology)
+ * ใช้กับ :entity — คำเรียกหน่วยข้อมูลหลัก (ผู้พัก/สมาชิก/ผู้ป่วย ฯลฯ) ที่ตั้งค่าได้ต่อองค์กร
+ * bootstrap (index.php) เรียก langSetGlobal('entity', settings.entity_term) หลังโหลด core
+ * @param array<string,string>|null $set ถ้าส่งมา = merge เข้าชุด global (ไม่ส่ง = อ่านอย่างเดียว)
+ * @return array<string,string>
+ */
+function langGlobals(?array $set = null): array
+{
+    static $g = [];
+    if ($set !== null) {
+        foreach ($set as $k => $v) $g[$k] = (string)$v;
+    }
+    return $g;
+}
+
+/** ตั้งค่า global ตัวเดียว — น้ำตาลสำหรับ langGlobals(['k'=>'v']) */
+function langSetGlobal(string $key, string $value): void
+{
+    langGlobals([$key => $value]);
+}
+
+/**
  * ดึงข้อความตาม key พร้อมแทนที่ตัวแปร
+ * ลำดับความสำคัญของตัวแปร: ต่อ-call > global (settings) > ค่าเริ่มต้นจากไฟล์ภาษา
+ *   - :entity เติมอัตโนมัติจาก settings.entity_term (ผ่าน langGlobals) — ถ้าไม่ตั้ง ใช้ 'entity.default' ในไฟล์ภาษา
  * @param array<string,string|int> $vars ตัวแปรในข้อความ เช่น ['name' => 'สมชาย'] จะแทนที่ :name
  */
 function t(string $key, array $vars = []): string
 {
     $lang = langLoad();
     $text = $lang[$key] ?? $key;
+
+    // ค่าเริ่มต้นของ entity มาจากไฟล์ภาษา — ถูก override ด้วย global (settings) และ per-call ตามลำดับ
+    $vars = $vars + langGlobals() + ['entity' => ($lang['entity.default'] ?? 'ผู้พัก')];
 
     foreach ($vars as $k => $v) {
         $text = str_replace(':' . $k, (string)$v, $text);

@@ -49,6 +49,14 @@ function appSettings(PDO $pdo): array {
         }
     } catch (Throwable $e) { /* ยังไม่ได้ migrate — ใช้ default (PDPA เปิด, ไม่มี site_url) */ }
 
+    // คำเรียกหน่วยข้อมูลหลัก (configurable terminology) — SELECT แยก tolerant เผื่อ DB เก่ายังไม่มีคอลัมน์
+    // ว่าง = ให้ t() ใช้ fallback 'entity.default' จากไฟล์ภาษาแทน
+    $defaults['entity_term'] = '';
+    try {
+        $v = $pdo->query("SELECT entity_term FROM settings ORDER BY id ASC LIMIT 1")->fetchColumn();
+        if ($v !== null && $v !== false && $v !== '') $defaults['entity_term'] = (string)$v;
+    } catch (Throwable $e) { /* ยังไม่ได้ migrate — ใช้ fallback จากไฟล์ภาษา */ }
+
     return $cache = $defaults;
 }
 

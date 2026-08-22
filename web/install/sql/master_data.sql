@@ -7698,6 +7698,7 @@ CREATE TABLE IF NOT EXISTS `settings` (
   `install_log` TEXT NULL,
   `app_name` varchar(255) DEFAULT 'Reg System',
   `site_subtitle` varchar(255) DEFAULT NULL,
+  `entity_term` varchar(100) DEFAULT NULL COMMENT 'configurable terminology: คำเรียกหน่วยข้อมูลหลัก (ผู้พัก/สมาชิก/ผู้ป่วย ฯลฯ) · NULL/ว่าง = ใช้ entity.default จากไฟล์ภาษา',
   `logo_path` varchar(255) DEFAULT NULL,
   `pdpa_enabled` tinyint(1) NOT NULL DEFAULT 1,
   `site_url` varchar(255) DEFAULT NULL,

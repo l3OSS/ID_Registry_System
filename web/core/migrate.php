@@ -167,6 +167,26 @@ function migSiteUrl(PDO $pdo, bool $apply = true): string
 }
 
 /**
+ * entity_term — คำเรียกหน่วยข้อมูลหลักที่ตั้งค่าได้ (configurable terminology)
+ * NULL/ว่าง = ระบบใช้ 'entity.default' จากไฟล์ภาษา (พฤติกรรมเดิม) — ไม่ต้อง backfill
+ * idempotent: เพิ่มเฉพาะเมื่อยังไม่มีคอลัมน์
+ */
+function migEntityTerm(PDO $pdo, bool $apply = true): string
+{
+    $hasCol = (bool)$pdo->query(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'settings' AND COLUMN_NAME = 'entity_term'"
+    )->fetchColumn();
+
+    if (!$hasCol) {
+        if (!$apply) return "entity_term: (dry-run) จะเพิ่มคอลัมน์ settings.entity_term";
+        $pdo->exec("ALTER TABLE settings ADD COLUMN entity_term VARCHAR(100) DEFAULT NULL AFTER site_subtitle");
+        return "entity_term: เพิ่มคอลัมน์ settings.entity_term แล้ว (ว่าง = ใช้คำเริ่มต้นจากไฟล์ภาษา)";
+    }
+    return "entity_term: มีคอลัมน์ settings.entity_term อยู่แล้ว";
+}
+
+/**
  * ภูมิลำเนา (กล่อง 3 ในหน้าเพิ่มข้อมูล) — เก็บเป็นเลข address_id เหมือนที่อยู่ตามทะเบียนบ้าน
  * home_same_as_reg = 1 (ค่าเริ่มต้น) แปลว่าใช้ที่อยู่ตามทะเบียนบ้าน → home_* เป็น NULL
  * idempotent: เพิ่มเฉพาะคอลัมน์ที่ยังไม่มี · แถวเดิมได้ค่าเริ่มต้น 1 = พฤติกรรมเดิม (ภูมิลำเนา = ที่อยู่ทะเบียนบ้าน)
