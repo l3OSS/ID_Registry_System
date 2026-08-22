@@ -43,19 +43,55 @@ if (!$hasCitizens) {
     die(e('inst.upd_no_citizens'));
 }
 
+// 3.5 หลังติดตั้งแล้ว งานรัน migration สงวนให้ EngiNear เท่านั้น (CLAUDE.md กฎห้ามข้อ 2)
+//     — ติดตั้งครั้งแรก (ยังไม่มี install.lock) ไม่ติดล็อก เพราะตอนนั้นยังไม่มีบัญชีให้ล็อกอิน
+if (file_exists(__DIR__ . '/install.lock')) {
+    require_once $root . '/core/rbac.php'; // isEngineer() อ่านจาก session แอปที่ใช้ร่วมกัน (PHPSESSID path=/)
+    if (!isEngineer()) {
+        http_response_code(403);
+        die(e('inst.upd_forbidden'));
+    }
+}
+
+$backupDir = $root . '/backups';
+if (!is_dir($backupDir)) { @mkdir($backupDir, 0755, true); }
+
+// 3.6 cooldown — กันยิงซ้ำถี่ ๆ (DoS/ดัมพ์ท่วมดิสก์) แม้ผ่าน auth แล้ว
+$stateFile = $backupDir . '/.last_update';
+$UPDATE_COOLDOWN = 30; // วินาที
+if (is_file($stateFile)) {
+    $elapsed = time() - (int)@file_get_contents($stateFile);
+    if ($elapsed >= 0 && $elapsed < $UPDATE_COOLDOWN) {
+        http_response_code(429);
+        die(e('inst.upd_cooldown'));
+    }
+}
+@file_put_contents($stateFile, (string)time());
+
 $steps = []; // [ok(bool), text]
 
-// 4. สำรอง DB ก่อนเสมอ — ถ้าล้มเหลว หยุดทันที (ไม่ยอมแตะข้อมูลโดยไม่มี backup)
-$bk = migBackup([
-    'host' => $_ENV['DB_HOST'] ?? 'localhost',
-    'port' => $_ENV['DB_PORT'] ?? '3306',
-    'db'   => $_ENV['DB_NAME'] ?? '',
-    'user' => $_ENV['DB_USER'] ?? '',
-    'pass' => $_ENV['DB_PASS'] ?? '',
-    'root' => $root,
-]);
-$steps[] = [$bk['ok'], t('inst.upd_step_backup') . $bk['msg']];
-$backup_failed = !$bk['ok'];
+// 4. สำรอง DB เฉพาะเมื่อมี migration ค้างจริง — ถ้าสคีมาเป็นเวอร์ชันล่าสุดแล้ว ข้าม backup (กันดัมพ์เกินจำเป็น)
+//    ถ้ามีค้าง: สำรองก่อนเสมอ ถ้าล้มเหลว หยุดทันที (ไม่ยอมแตะข้อมูลโดยไม่มี backup)
+$pending = updatePending($pdo);
+$backup_failed = false;
+if ($pending) {
+    $bk = migBackup([
+        'host' => $_ENV['DB_HOST'] ?? 'localhost',
+        'port' => $_ENV['DB_PORT'] ?? '3306',
+        'db'   => $_ENV['DB_NAME'] ?? '',
+        'user' => $_ENV['DB_USER'] ?? '',
+        'pass' => $_ENV['DB_PASS'] ?? '',
+        'root' => $root,
+    ]);
+    $steps[] = [$bk['ok'], t('inst.upd_step_backup') . $bk['msg']];
+    $backup_failed = !$bk['ok'];
+    if ($bk['ok']) {
+        $pruned = migPruneBackups($backupDir, 7); // retention — เก็บ backup ล่าสุด 7 ไฟล์
+        if ($pruned > 0) { $steps[] = [true, t('inst.upd_step_prune') . $pruned]; }
+    }
+} else {
+    $steps[] = [true, t('inst.upd_uptodate')];
+}
 
 // 5. รัน migration (เฉพาะเมื่อ backup สำเร็จ) — แต่ละขั้นแยก try/catch เพื่อรายงานครบ
 if (!$backup_failed) {

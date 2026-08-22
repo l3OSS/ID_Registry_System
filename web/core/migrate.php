@@ -504,3 +504,65 @@ function migBackup(array $cfg): array
     }
     return ['ok' => true, 'msg' => sprintf('backup สำเร็จ: %s (%.1f KB)', basename($outFile), $size / 1024), 'file' => $outFile];
 }
+
+/**
+ * มี migration (แก้สคีมา) ค้างอยู่ไหม — เช็ค read-only ล้วน (ไม่แตะข้อมูล) เพื่อให้หน้าอัพเดต
+ * "ข้าม backup + ALTER" เมื่อระบบเป็นเวอร์ชันล่าสุดแล้ว (กันดัมพ์เกินจำเป็น/ดิสก์เต็มจากการยิงซ้ำ)
+ *
+ * ‼️ เพิ่ม migration ที่แก้สคีมาใหม่เมื่อไร ให้เพิ่มเช็คที่นี่ด้วย ไม่งั้นรอบอัพเดตนั้นจะไม่ถูก backup
+ * หมายเหตุ: P5+P6 (re-encrypt ข้อมูล) ไม่รวมในตัวตรวจนี้ — ถือว่าทำครบตั้งแต่รอบที่สคีมายังไม่ครบ
+ * (ตอนนั้นตัวตรวจคืน true → backup แล้ว) · migration ทุกตัวยัง idempotent รันซ้ำได้เสมอ
+ */
+function updatePending(PDO $pdo): bool
+{
+    $col = function (string $t, string $c) use ($pdo): bool {
+        $st = $pdo->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?");
+        $st->execute([$t, $c]);
+        return (bool)$st->fetchColumn();
+    };
+    $tbl = function (string $t) use ($pdo): bool {
+        $st = $pdo->prepare("SELECT COUNT(*) FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?");
+        $st->execute([$t]);
+        return (bool)$st->fetchColumn();
+    };
+
+    if (!$col('citizens', 'public_id'))        return true; // P7
+    if (!$col('citizens', 'is_active'))         return true; // stay denorm
+    if (!$col('citizens', 'last_stay_at'))      return true;
+    if (!$col('citizens', 'home_address_id'))   return true; // ภูมิลำเนา
+    if (!$col('citizens', 'birth_year_only'))   return true; // year-only
+    if ($tbl('users')    && !$col('users', 'display_key'))     return true;
+    if ($tbl('settings') && !$col('settings', 'pdpa_enabled')) return true;
+    if ($tbl('settings') && !$col('settings', 'site_url'))     return true;
+    if ($tbl('settings') && !$col('settings', 'entity_term'))  return true;
+    if (!$tbl('stat_counters'))                 return true;
+    if (!$tbl('name_prefix'))                   return true; // dict คำนำหน้า
+    if ($tbl('roles')) {
+        $hasViewer = (bool)$pdo->query("SELECT COUNT(*) FROM roles WHERE id = 4")->fetchColumn();
+        if (!$hasViewer)                        return true; // Viewer role
+    }
+    if ($tbl('activity_logs')) {
+        $trg = (int)$pdo->query(
+            "SELECT COUNT(*) FROM information_schema.TRIGGERS
+             WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = 'activity_logs'"
+        )->fetchColumn();
+        if ($trg === 0)                         return true; // P8 append-only triggers
+    }
+    return false; // สคีมาครบเวอร์ชันล่าสุด
+}
+
+/**
+ * เก็บไฟล์ backup ล่าสุดไว้ $keep ไฟล์ ที่เหลือ (เก่ากว่า) ลบทิ้ง — กันการยิงอัพเดตซ้ำ ๆ
+ * ทำ dump กองจนดิสก์เต็ม · คืนจำนวนไฟล์ที่ลบ
+ */
+function migPruneBackups(string $dir, int $keep = 7): int
+{
+    $files = glob(rtrim($dir, '/\\') . '/reg_*.sql');
+    if (!$files || count($files) <= $keep) return 0;
+    usort($files, function ($a, $b) { return filemtime($b) <=> filemtime($a); }); // ใหม่→เก่า
+    $n = 0;
+    foreach (array_slice($files, $keep) as $f) { if (@unlink($f)) $n++; }
+    return $n;
+}

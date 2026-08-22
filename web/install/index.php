@@ -10,6 +10,19 @@ require_once __DIR__ . '/../core/lang.php'; // ข้อความทั้ง
 $mode      = preg_replace('/[^a-z]/', '', $_GET['mode'] ?? '');
 $installed = file_exists(__DIR__ . '/install.lock');
 
+// อัพเดตหลังติดตั้ง = งานสงวนของ EngiNear เท่านั้น (กันเผลอเข้า/ยิงมั่ว)
+// ติดตั้งครั้งแรก (ยังไม่มี install.lock) ไม่ติดล็อก เพราะยังไม่มีบัญชีให้ล็อกอิน
+$engOK   = true;
+$pending = true; // มี migration ค้างให้ทำไหม — โชว์ฟอร์มอัพเดตเฉพาะเมื่อค้างจริง (กันกดซ้ำทั้งที่ไม่มีอะไรต้องทำ)
+if ($installed) {
+    require_once __DIR__ . '/../core/rbac.php';   // นำ isEngineer() + $pdo (ผ่าน auth→config/db) มาด้วย
+    $engOK = isEngineer();
+    if ($engOK) {
+        require_once __DIR__ . '/../core/migrate.php';
+        $pending = updatePending($pdo);
+    }
+}
+
 // S1: fresh install ถูกบล็อกเมื่อระบบติดตั้งแล้ว (กัน re-install attack) — ต้องอัพเดตผ่านโหมด update เท่านั้น
 if ($mode === 'fresh' && $installed) {
     header('Location: ../index.php');
@@ -22,7 +35,7 @@ $requirements = installRequirements();
 $can_install  = !in_array(false, $requirements, true);
 
 // nonce สำหรับโหมด update (กัน drive-by POST)
-if ($mode === 'update') {
+if ($mode === 'update' && $installed && $engOK && $pending) {
     $_SESSION['update_token'] = bin2hex(random_bytes(16));
 }
 ?>
@@ -88,6 +101,16 @@ if ($mode === 'update') {
                 <div class="alert alert-warning border-0"><i class="bi bi-exclamation-triangle-fill"></i>
                     <?php echo e('inst.not_installed'); ?><a href="index.php?mode=fresh"><?php echo e('inst.do_install_link'); ?></a>
                 </div>
+            <?php elseif (!$engOK): ?>
+                <div class="alert alert-danger border-0"><i class="bi bi-shield-lock"></i>
+                    <?php echo t('inst.upd_login_required'); ?>
+                </div>
+                <a href="../index.php?page=login" class="btn btn-outline-primary"><i class="bi bi-box-arrow-in-right"></i> <?php echo e('inst.upd_login_btn'); ?></a>
+            <?php elseif (!$pending): ?>
+                <div class="alert alert-success border-0"><i class="bi bi-check-circle-fill"></i>
+                    <?php echo t('inst.upd_none_pending'); ?>
+                </div>
+                <a href="../index.php" class="btn btn-outline-secondary"><?php echo e('btn.back'); ?></a>
             <?php else: ?>
                 <p class="text-muted"><?php echo t('inst.update_intro'); ?></p>
                 <ul class="mb-4">

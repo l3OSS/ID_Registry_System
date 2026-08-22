@@ -714,6 +714,12 @@ return [
     'inst.upd_backup_fail' => '<strong>หยุดการอัพเดต:</strong> สำรองฐานข้อมูลไม่สำเร็จ จึงไม่แตะข้อมูลใด ๆ (ตรวจว่ามี <code>mysqldump</code> หรือกำหนด env <code>MYSQLDUMP</code>)',
     'inst.upd_rm_install'  => '<strong>แนะนำ:</strong> ลบโฟลเดอร์ <code>install/</code> ออกหลังอัพเดตเสร็จ',
     'inst.upd_login_btn'   => 'เข้าสู่ระบบ',
+    'inst.upd_forbidden'   => 'การอัพเดตหลังติดตั้งสงวนไว้สำหรับผู้ดูแลระดับ EngiNear — โปรดเข้าสู่ระบบก่อน',
+    'inst.upd_cooldown'    => 'เพิ่งรันการอัพเดตไปเมื่อครู่ — โปรดรอสักครู่แล้วลองใหม่',
+    'inst.upd_uptodate'    => 'ระบบเป็นเวอร์ชันล่าสุดแล้ว — ไม่มี migration ค้าง จึงข้ามการสำรองข้อมูล',
+    'inst.upd_login_required' => 'การอัพเดต/รัน migration หลังติดตั้งสงวนไว้สำหรับผู้ดูแลระดับ EngiNear โปรดเข้าสู่ระบบด้วยบัญชี EngiNear ก่อน แล้วกลับมาหน้านี้อีกครั้ง',
+    'inst.upd_step_prune'  => 'ล้าง backup เก่าที่เกินโควตา (ไฟล์): ',
+    'inst.upd_none_pending' => 'ระบบเป็นเวอร์ชันล่าสุดแล้ว — ไม่มีรายการที่ต้องอัพเดต',
     // ป้าย migration step (แสดงในรายการผลอัพเดต) — คงรหัสเทคนิคไว้ แปลเฉพาะคำอธิบายไทย
     'inst.upd_step_backup' => 'สำรองฐานข้อมูล: ',
     'inst.upd_step_p8'     => 'P8 (activity_logs append-only)',
