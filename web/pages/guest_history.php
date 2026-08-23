@@ -9,6 +9,7 @@ require_once 'core/auth.php';
 require_once 'core/security.php';
 require_once 'core/functions.php';
 require_once 'core/rbac.php'; // requirePermission — หน้านี้แสดง PII เต็ม (ชื่อ/เลขบัตร/ที่อยู่/สุขภาพ)
+require_once 'core/locations.php'; // ป้ายจุดพักจากผังลำดับชั้น (display_from)
 
 // แสดงข้อมูลบุคคลแบบเต็ม — ต้องมี guests.view (Viewer ไม่มี → 403 · เดิมเป็นแค่ checkLogin ทำให้ยิง URL ตรงได้)
 requirePermission('guests.view');
@@ -70,6 +71,9 @@ $sql_history = "SELECT h.*, u.nickname as admin_name
 $stmt_h = $pdo->prepare($sql_history);
 $stmt_h->execute([':cid' => $id]);
 $history = $stmt_h->fetchAll();
+
+// ผังสถานที่พัก — map สำหรับแปลง location_id → ป้าย (try/catch เผื่อยังไม่ได้รัน migration)
+try { $locMap = locationMap($pdo); } catch (Throwable $e) { $locMap = []; }
 
 // Security Audit
 writeLog($pdo, 'VIEW_HISTORY', "Accessed profile: $fullname (ID: $id)");
@@ -227,10 +231,14 @@ writeLog($pdo, 'VIEW_HISTORY', "Accessed profile: $fullname (ID: $id)");
                                 <?php echo ($h['status'] === 'Active') ? '<span class="text-muted italic small">' . e('hist.not_checked_out') . '</span>' : dateThai($h['check_out']); ?>
                             </td>
                             <td>
-                                <span class="badge rounded-pill <?php echo ($h['location_type'] === 'Inside') ? 'bg-info-subtle text-info border border-info' : 'bg-warning-subtle text-warning-emphasis border border-warning'; ?> px-3">
-                                    <i class="bi <?php echo ($h['location_type'] === 'Inside') ? 'bi-building' : 'bi-house-door'; ?>"></i> 
-                                    <?php echo ($h['location_type'] === 'Inside') ? e('common.inside') : e('common.outside'); ?>
-                                </span>
+                                <?php $locLabel = !empty($h['location_id']) ? locationDisplayLabel($locMap, (int)$h['location_id']) : ''; ?>
+                                <?php if ($locLabel !== ''): ?>
+                                    <span class="badge rounded-pill bg-secondary-subtle text-body border px-3">
+                                        <i class="bi bi-geo-alt"></i> <?php echo htmlspecialchars($locLabel, ENT_QUOTES, 'UTF-8'); ?>
+                                    </span>
+                                <?php else: ?>
+                                    <span class="text-muted">—</span>
+                                <?php endif; ?>
                             </td>
                             <td>
                                 <?php if ($h['status'] === 'Active'): ?>

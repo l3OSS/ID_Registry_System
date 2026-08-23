@@ -8,6 +8,7 @@
 require_once 'core/auth.php';
 require_once 'core/security.php';
 require_once 'core/functions.php';
+require_once 'core/locations.php';   // ผังสถานที่พัก — ตัวเลือกสวิตช์ (เพิ่มคู่กับ Inside/Outside)
 
 // Access Control: Minimum level 3 (Registrar)
 requirePermission('guests.register');
@@ -60,12 +61,12 @@ if ($id > 0) {
             $photo_show = $citizen['photo_path'];
         }
 
-        // การเข้าพักที่ยัง Active — check_in/location_type อยู่ที่ stay_history ไม่ใช่ citizens
-        // ต้องดึงกลับมาโชว์ตอนแก้ไข ไม่งั้น dropdown เด้งเป็น "พักในศูนย์" และวันเข้าพักกลายเป็นวันนี้เสมอ
-        $stmt_stay = $pdo->prepare("SELECT check_in, location_type FROM stay_history WHERE citizen_id = ? AND status = 'Active' ORDER BY id DESC LIMIT 1");
+        // การเข้าพักที่ยัง Active — check_in/location_id อยู่ที่ stay_history ไม่ใช่ citizens
+        // ต้องดึงกลับมาโชว์ตอนแก้ไข ไม่งั้นจุดพักหาย และวันเข้าพักกลายเป็นวันนี้เสมอ
+        $stmt_stay = $pdo->prepare("SELECT check_in, location_id FROM stay_history WHERE citizen_id = ? AND status = 'Active' ORDER BY id DESC LIMIT 1");
         $stmt_stay->execute([$id]);
         $stay = $stmt_stay->fetch() ?: [];
-        $citizen['location_type'] = $stay['location_type'] ?? '';
+        $citizen['location_id']   = $stay['location_id'] ?? null;  // จุดพักจากผังลำดับชั้น (ตัวเลือกสวิตช์)
         $citizen['check_in']      = $stay['check_in'] ?? '';
 
         // Fetch selected vulnerable mapping
@@ -316,18 +317,139 @@ if ($id > 0) {
                 <div class="p-3 mb-4 rounded border-success border-opacity-50 border bg-success bg-opacity-10">
                     <h6 class="text-success fw-bold border-bottom pb-2 mb-3"><i class="bi bi-house-door-fill"></i> <?php echo e('form.stay_section'); ?></h6>
                     <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label fw-bold small"><?php echo e('loc.pick_field_label'); ?>
+                                <span class="fw-normal text-body-secondary small">— <?php echo e('loc.pick_hint'); ?></span>
+                            </label>
+                            <?php
+                                $locMap  = locationMap($pdo, true);   // เฉพาะที่ active
+                                $locTree = locationTreeNested($locMap);
+                                $locSelected = (int)($citizen['location_id'] ?? 0);
+                            ?>
+                            <input type="hidden" name="location_id" id="location_id" value="<?php echo $locSelected; ?>">
+                            <?php if (empty($locTree)): ?>
+                                <div class="alert alert-warning py-2 px-3 small mb-0">
+                                    <i class="bi bi-exclamation-triangle"></i> <?php echo e('loc.none_configured'); ?>
+                                </div>
+                            <?php else: ?>
+                                <div class="loc-picker" id="locPicker"
+                                     data-tree='<?php echo htmlspecialchars(json_encode($locTree, JSON_UNESCAPED_UNICODE), ENT_QUOTES); ?>'
+                                     data-selected="<?php echo $locSelected; ?>"></div>
+                                <div class="small mt-2" id="locPickerLabel"></div>
+                            <?php endif; ?>
+                        </div>
                         <div class="col-md-4">
                             <label class="form-label fw-bold small"><?php echo e('form.checkin_date'); ?></label>
                             <input type="text" name="check_in_date" id="check_in_date" class="form-control bg-white" required readonly>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold small"><?php echo e('form.place_type'); ?></label>
-                            <?php $loc_now = $citizen['location_type'] ?? ''; ?>
-                            <select name="location_type" class="form-select">
-                                <option value="Inside" <?php echo ($loc_now === 'Inside' || $loc_now === '') ? 'selected' : ''; ?>><?php echo e('form.place_inside'); ?></option>
-                                <option value="Outside" <?php echo ($loc_now === 'Outside') ? 'selected' : ''; ?>><?php echo e('form.place_outside'); ?></option>
-                            </select>
-                        </div>
+
+                        <style>
+                            /* สวิตช์ + ข้อความ เรียงต่อกันแนวนอน (เหมือนกล่องกลุ่มเปราะบาง) */
+                            .loc-picker .loc-lvl-tag { font-size: .66rem; letter-spacing: .06em; text-transform: uppercase; color: var(--bs-secondary-color); margin: 8px 0 3px; }
+                            .loc-picker .loc-row { display: flex; flex-wrap: wrap; column-gap: 1.4rem; row-gap: .1rem; }
+                            .loc-picker .loc-kids { padding-left: 14px; border-left: 2px solid var(--bs-border-color); margin: 1px 0 5px 6px; }
+                            .loc-picker .form-check.form-switch { margin-bottom: 2px; }
+                            .loc-picker .form-check-label { cursor: pointer; }
+                            .loc-picker .loc-sub { font-weight: 400; color: var(--bs-secondary-color); font-size: .78rem; }
+                        </style>
+                        <script>
+                        (function () {
+                            const host = document.getElementById('locPicker');
+                            if (!host) return;
+                            const hidden = document.getElementById('location_id');
+                            const labelEl = document.getElementById('locPickerLabel');
+                            const TREE = JSON.parse(host.dataset.tree || '[]');
+                            const KINDS = <?php echo json_encode(array_values(LOC_KINDS), JSON_UNESCAPED_UNICODE); ?>;
+                            const L = {
+                                none: <?php echo json_encode(t('loc.pick_none')); ?>,
+                                incomplete: <?php echo json_encode(t('loc.pick_incomplete')); ?>,
+                                selected: <?php echo json_encode(t('loc.selected')); ?>,
+                                assign: <?php echo json_encode(t('loc.tag_assign')); ?>,
+                                warnTitle: <?php echo json_encode(t('loc.warn_room_title')); ?>,
+                                warnText: <?php echo json_encode(t('loc.warn_room_text')); ?>,
+                                warnOk: <?php echo json_encode(t('loc.warn_room_ok')); ?>,
+                            };
+                            let path = [];
+
+                            const initId = parseInt(host.dataset.selected || '0', 10);
+                            if (initId) { const p = findPath(TREE, initId); if (p) path = p; }
+
+                            function findPath(nodes, id, acc) {
+                                acc = acc || [];
+                                for (const n of nodes) {
+                                    const next = acc.concat(n);
+                                    if (n.id === id) return next;
+                                    if (n.children && n.children.length) { const r = findPath(n.children, id, next); if (r) return r; }
+                                }
+                                return null;
+                            }
+                            function render() { host.innerHTML = ''; renderLevel(TREE, host, 0); updateLabel(); }
+                            function renderLevel(nodes, parent, depth) {
+                                const wrap = document.createElement('div'); wrap.className = 'loc-lvl';
+                                const tag = document.createElement('div'); tag.className = 'loc-lvl-tag';
+                                tag.textContent = (KINDS[depth] || ('ระดับ ' + (depth + 1))); wrap.appendChild(tag);
+                                const rowBox = document.createElement('div'); rowBox.className = 'loc-row'; wrap.appendChild(rowBox);
+                                let openNode = null;
+                                nodes.forEach(function (n) {
+                                    const on = path.indexOf(n) > -1;
+                                    const hasKids = n.children && n.children.length;
+                                    const cid = 'loc_sw_' + n.id;
+                                    const item = document.createElement('div'); item.className = 'form-check form-switch';
+                                    const label = esc(n.name) +
+                                        (n.assignable ? ' <span class="badge bg-success-subtle text-success border border-success">' + esc(L.assign) + '</span>' : '') +
+                                        (hasKids ? ' <span class="loc-sub">· ' + n.children.length + '</span>' : '');
+                                    item.innerHTML =
+                                        '<input class="form-check-input" type="checkbox" id="' + cid + '"' + (on ? ' checked' : '') + '>' +
+                                        '<label class="form-check-label small fw-bold" for="' + cid + '">' + label + '</label>';
+                                    item.querySelector('input').addEventListener('change', function () { toggle(n, depth); });
+                                    rowBox.appendChild(item);
+                                    if (on && hasKids) openNode = n;
+                                });
+                                if (openNode) {
+                                    const kids = document.createElement('div'); kids.className = 'loc-kids';
+                                    wrap.appendChild(kids); renderLevel(openNode.children, kids, depth + 1);
+                                }
+                                parent.appendChild(wrap);
+                            }
+                            function toggle(n, depth) {
+                                const wasOn = path.indexOf(n) > -1;
+                                path = path.slice(0, depth);
+                                if (!wasOn) path.push(n);
+                                render();
+                            }
+                            function updateLabel() {
+                                let val = 0, txt = L.none, cls = 'text-body-secondary';
+                                if (path.length) {
+                                    const last = path[path.length - 1];
+                                    if (!last.assignable) { txt = L.incomplete; cls = 'text-danger'; }
+                                    else {
+                                        val = last.id;
+                                        let start = path.length - 1;
+                                        for (let i = 0; i < path.length; i++) { if (path[i].display_from) { start = i; break; } }
+                                        txt = L.selected + ' ' + path.slice(start).map(x => x.name).join(' › ');
+                                        cls = 'text-success fw-semibold';
+                                    }
+                                }
+                                hidden.value = val;
+                                labelEl.className = 'small mt-2 ' + cls;
+                                labelEl.textContent = txt;
+                            }
+                            function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+                            function isIncomplete() { return path.length > 0 && !path[path.length - 1].assignable; }
+
+                            const form = host.closest('form');
+                            if (form) {
+                                form.addEventListener('submit', function (e) {
+                                    if (!isIncomplete()) return;
+                                    e.preventDefault(); e.stopPropagation();
+                                    host.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    if (window.Swal) Swal.fire({ icon: 'warning', title: L.warnTitle, text: L.warnText, confirmButtonText: L.warnOk });
+                                    else alert(L.warnTitle + '\n' + L.warnText);
+                                });
+                            }
+                            render();
+                        })();
+                        </script>
                         <div class="col-12 border-top pt-3">
                             <div class="form-check mb-2">
                                 <input class="form-check-input border-danger" type="checkbox" id="confirmData" required>

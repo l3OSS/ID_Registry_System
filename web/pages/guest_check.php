@@ -13,6 +13,7 @@ require_once __DIR__ . '/../core/lang.php';   // ข้อความทั้�
 require_once __DIR__ . '/../core/csrf.php';
 require_once __DIR__ . '/../core/tx.php';
 require_once __DIR__ . '/../core/stats.php'; // ตัวนับแดชบอร์ด (active/กลุ่มเปราะบาง)
+require_once __DIR__ . '/../core/locations.php'; // ผังสถานที่พัก (ตรวจ location_id ฝั่งเซิร์ฟเวอร์)
 
 // เส้นทาง "เขียนข้อมูลจริง" — เดิมตรวจแค่ checkLogin() ผู้ใช้ระดับใดก็ POST เข้ามาได้ (ซ่อนปุ่มในฟอร์มไม่ใช่การป้องกัน)
 requirePermission('guests.register');
@@ -220,7 +221,13 @@ if ($age !== null) {
         $stmt_stay->execute([$citizen_id]);
         $active_stay_id = $stmt_stay->fetchColumn();
 
-        $location_type = ($post_data['location_type'] ?? '') === 'Outside' ? 'Outside' : 'Inside';
+        // จุดพักละเอียดจากผังลำดับชั้น — เชื่อเฉพาะโหนดที่มีจริง + assignable + active (ห้ามเชื่อ client)
+        $location_id = (int)($post_data['location_id'] ?? 0);
+        if ($location_id > 0) {
+            $locMap = locationMap($pdo);
+            if (!locationIsAssignable($locMap, $location_id)) $location_id = 0;
+        }
+        $location_id = $location_id > 0 ? $location_id : null;
         // ฟอร์มถูกเปิดมาแบบ "แก้ไข" หรือไม่ (hidden field action จาก guest_form — ผ่านหน้าเปรียบเทียบมาด้วย)
         $is_edit = ($post_data['action'] ?? '') === 'update';
 
@@ -230,9 +237,9 @@ if ($age !== null) {
             $check_in_date = normalizeDateTimeInput($post_data['check_in_date'] ?? null);
             $admin_id = $_SESSION['user_id'] ?? 0;
 
-            $sql_stay = "INSERT INTO stay_history (citizen_id, check_in, location_type, status, admin_id)
+            $sql_stay = "INSERT INTO stay_history (citizen_id, check_in, location_id, status, admin_id)
                          VALUES (?, ?, ?, 'Active', ?)";
-            $pdo->prepare($sql_stay)->execute([$citizen_id, $check_in_date, $location_type, $admin_id]);
+            $pdo->prepare($sql_stay)->execute([$citizen_id, $check_in_date, $location_id, $admin_id]);
 
             // denorm: มี stay Active ใหม่ → ปรับสถานะบน citizens (ใช้เรียง/กรองหน้ารายชื่อโดยไม่ต้อง subquery)
             $pdo->prepare("UPDATE citizens SET is_active = 1, last_stay_at = ? WHERE id = ?")
@@ -240,13 +247,12 @@ if ($age !== null) {
 
             writeLog($pdo, 'CHECK_IN', "เช็คอินบุคคล ID: $citizen_id ผ่านการอ่านบัตร");
         } elseif ($is_edit) {
-            // กำลังพักอยู่ + เปิดมาจากปุ่มแก้ไข → อัปเดตประเภทที่พักตามที่เลือก
+            // กำลังพักอยู่ + เปิดมาจากปุ่มแก้ไข → อัปเดตจุดพักตามที่เลือก
             // ไม่แตะ check_in เดิม เพื่อคงวันเข้าพักจริงไว้
-            $pdo->prepare("UPDATE stay_history SET location_type = ? WHERE id = ?")
-                ->execute([$location_type, $active_stay_id]);
+            $pdo->prepare("UPDATE stay_history SET location_id = ? WHERE id = ?")
+                ->execute([$location_id, $active_stay_id]);
         }
-        // กำลังพักอยู่ แต่มาจากฟอร์ม "เพิ่มข้อมูล" (ลงทะเบียนซ้ำ/อ่านบัตรใหม่) → คงประเภทที่พักเดิมไว้
-        // เพราะ dropdown ในฟอร์มเปล่าเป็นค่าเริ่มต้น "พักในศูนย์" ไม่ใช่เจตนาของเจ้าหน้าที่
+        // กำลังพักอยู่ แต่มาจากฟอร์ม "เพิ่มข้อมูล" (ลงทะเบียนซ้ำ/อ่านบัตรใหม่) → คงจุดพักเดิมไว้
 
         // ตัวนับแดชบอร์ด: บวกส่วนร่วมใหม่ (อ่าน is_active + แท็กที่เพิ่งเขียนลงจริง)
         statCounterAdd($pdo, (int)$citizen_id);

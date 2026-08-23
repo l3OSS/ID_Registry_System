@@ -162,7 +162,7 @@ function seed_tsv($v): string {
 
 // ---------- เตรียม statement fallback (multi-row INSERT) ----------
 $CIT_COLS  = "(id,public_id,id_card_hash,id_card_enc,id_card_last4,prefix,firstname,lastname,gender,birthdate,phone_enc,addr_number,addr_tambon,addr_amphoe,addr_province,address_id,addr_zipcode,home_same_as_reg,created_at)";
-$STAY_COLS = "(citizen_id,check_in,check_out,location_type,status,admin_id)";
+$STAY_COLS = "(citizen_id,check_in,check_out,status,admin_id)";
 $VUL_COLS  = "(citizen_id,v_id)";
 $CUST_COLS = "(citizen_id,field_id,field_value)";
 
@@ -280,13 +280,13 @@ for ($n = 0; $n < $TARGET; $n++) {
             $a['id'], $a['zipcode'], 1, $ts,
         ])) . "\n");
         fwrite($hStay, implode("\t", array_map('seed_tsv', [
-            $id, $ts, null, 'Inside', 'Active', $adminId,
+            $id, $ts, null, 'Active', $adminId,
         ])) . "\n");
     } else {
         $bufCit[]  = [$id, $pub, $idHash, $idEnc, $last4, $prefix, $first, $last, $gender, $birth,
                       $phoneEnc, $addrNo, $a['subdistrict'], $a['district'], $a['province'],
                       $a['id'], $a['zipcode'], 1, $ts];
-        $bufStay[] = [$id, $ts, null, 'Inside', 'Active', $adminId];
+        $bufStay[] = [$id, $ts, null, 'Active', $adminId];
     }
 
     // auto-tag กลุ่มเปราะบางตามอายุ (เหมือน guest_check) — req2 ส่วนกลุ่มอายุ = ตามจริง

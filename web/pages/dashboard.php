@@ -8,6 +8,7 @@
 require_once 'core/auth.php';
 require_once 'core/functions.php';
 require_once 'core/stats.php'; // ตัวนับสรุป (active/กลุ่มเปราะบาง) — O(1)
+require_once 'core/locations.php'; // ป้ายจุดพักจากผังลำดับชั้น (การ์ดผู้เข้าพักล่าสุด)
 
 // Ensure user is logged in
 checkLogin();
@@ -42,7 +43,7 @@ try {
     // Recent Active Residents (Limit 5) — PII (ชื่อ/รูป) จึงดึงเฉพาะบทบาทที่มีสิทธิ์เห็นข้อมูลบุคคล
     // Viewer (ไม่มี guests.view) ได้ [] — ไม่ over-fetch PII มาแล้วค่อยซ่อนใน HTML
     if (userCan('guests.view')) {
-        $sql_recent = "SELECT c.id, c.public_id, c.prefix, c.firstname, c.lastname, c.photo_path, h.check_in, h.location_type
+        $sql_recent = "SELECT c.id, c.public_id, c.prefix, c.firstname, c.lastname, c.photo_path, h.check_in, h.location_id
                        FROM stay_history h
                        JOIN citizens c ON h.citizen_id = c.id
                        WHERE h.status = 'Active'
@@ -51,6 +52,8 @@ try {
     } else {
         $active_citizens = [];
     }
+    // ผังสถานที่พัก — map สำหรับแปลง location_id → ป้าย (try/catch เผื่อยังไม่ได้รัน migration)
+    try { $locMap = locationMap($pdo); } catch (Throwable $e) { $locMap = []; }
 
 
     $stmt = $pdo->query("SELECT install_log FROM settings ORDER BY id DESC LIMIT 1");
@@ -160,9 +163,12 @@ $nickname = $_SESSION['nickname'] ?? $_SESSION['username'] ?? t('user.anonymous'
                                     <small class="text-muted"><i class="bi bi-calendar-event"></i> <?php echo date('d/m/Y H:i', strtotime($ag['check_in'])); ?> <?php echo e('common.time_unit'); ?></small>
                                 </td>
                                 <td>
-                                    <span class="badge rounded-pill bg-<?php echo ($ag['location_type']=='Inside')?'info':'warning'; ?> text-dark">
-                                        <?php echo ($ag['location_type']=='Inside')?e('common.inside'):e('common.outside'); ?>
-                                    </span>
+                                    <?php $locLabel = !empty($ag['location_id']) ? locationDisplayLabel($locMap ?? [], (int)$ag['location_id']) : ''; ?>
+                                    <?php if ($locLabel !== ''): ?>
+                                        <span class="badge rounded-pill bg-secondary-subtle text-body border"><i class="bi bi-geo-alt"></i> <?php echo htmlspecialchars($locLabel, ENT_QUOTES, 'UTF-8'); ?></span>
+                                    <?php else: ?>
+                                        <span class="text-muted">—</span>
+                                    <?php endif; ?>
                                 </td>
                                 <td class="text-end pe-3">
                                     <a href="index.php?page=guest_history&id=<?php echo htmlspecialchars($ag['public_id'] ?? ''); ?>" class="btn btn-sm btn-light rounded-circle shadow-sm">

@@ -7743,7 +7743,7 @@ CREATE TABLE IF NOT EXISTS `stay_history` (
   `citizen_id` int UNSIGNED NOT NULL,
   `check_in` datetime NOT NULL,
   `check_out` datetime DEFAULT NULL,
-  `location_type` enum('Inside','Outside') NOT NULL DEFAULT 'Inside',
+  `location_id` int UNSIGNED DEFAULT NULL COMMENT 'จุดพักละเอียดจากผังลำดับชั้น (ตาราง locations)',
   `status` enum('Active','Completed','Cancelled') NOT NULL DEFAULT 'Active',
   `admin_id` int UNSIGNED NOT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
@@ -7751,7 +7751,30 @@ CREATE TABLE IF NOT EXISTS `stay_history` (
   KEY `citizen_id` (`citizen_id`),
   KEY `admin_id` (`admin_id`),
   KEY `status` (`status`),
-  KEY `idx_check_in` (`check_in`)
+  KEY `idx_check_in` (`check_in`),
+  KEY `idx_location` (`location_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `locations` (ผังสถานที่พักแบบลำดับชั้น)
+--
+
+CREATE TABLE IF NOT EXISTS `locations` (
+  `id` int UNSIGNED NOT NULL AUTO_INCREMENT,
+  `parent_id` int UNSIGNED DEFAULT NULL COMMENT 'NULL = โซนระดับบนสุด',
+  `name` varchar(150) NOT NULL,
+  `kind` tinyint UNSIGNED NOT NULL DEFAULT 0 COMMENT 'ป้ายชนิด: 0 โซน·1 อาคาร·2 ห้อง·3 พิเศษ',
+  `depth` tinyint UNSIGNED NOT NULL DEFAULT 0 COMMENT 'ระดับ 0..4 (เพดาน 5 ชั้น)',
+  `is_shared` tinyint(1) NOT NULL DEFAULT 0 COMMENT '1 = อาคาร/เรือนรวม (มีห้องย่อย)',
+  `assignable` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1 = เลือกเป็นจุดพักได้',
+  `display_from` tinyint(1) NOT NULL DEFAULT 0 COMMENT '1 = เริ่มแสดง path จากโหนดนี้ลงไป',
+  `sort_order` int NOT NULL DEFAULT 0,
+  `active` tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  KEY `idx_parent` (`parent_id`),
+  CONSTRAINT `fk_loc_parent` FOREIGN KEY (`parent_id`) REFERENCES `locations` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
@@ -7845,7 +7868,8 @@ ALTER TABLE `citizen_vulnerable_map`
 --
 ALTER TABLE `stay_history`
   ADD CONSTRAINT `fk_stay_admin` FOREIGN KEY (`admin_id`) REFERENCES `users` (`id`),
-  ADD CONSTRAINT `fk_stay_citizen` FOREIGN KEY (`citizen_id`) REFERENCES `citizens` (`id`) ON DELETE CASCADE;
+  ADD CONSTRAINT `fk_stay_citizen` FOREIGN KEY (`citizen_id`) REFERENCES `citizens` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_stay_location` FOREIGN KEY (`location_id`) REFERENCES `locations` (`id`) ON DELETE SET NULL;
 COMMIT;
 
 -- --------------------------------------------------------

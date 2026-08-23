@@ -13,7 +13,8 @@ require_once __DIR__ . '/auth.php'; // ต้องมี checkLogin()
 const ROLE_PERMISSIONS = [
     1 => ['*'], // EngiNear (engineer) — สิทธิ์สูงสุด
     2 => ['users.view', 'users.edit', 'export.excel', 'logs.view',
-          'guests.view', 'guests.register', 'guests.delete', 'profile.edit'], // Admin
+          'guests.view', 'guests.register', 'guests.delete', 'profile.edit',
+          'locations.manage'], // Admin
     3 => ['guests.view', 'logs.view', 'guests.register', 'profile.edit'],       // Regis (งานทะเบียน)
     // Viewer (ผู้ชมสถิติ/ผู้บริหาร) — เห็นเฉพาะภาพรวม/สถิติรวมบนแดชบอร์ด (ไม่ผูก guests.view จึงไม่เห็น PII)
     // ไม่มี guests.view/register/delete, export, logs, users — เปิดหน้ารายชื่อ/ประวัติ/ส่งออก = 403
@@ -37,6 +38,7 @@ const ALL_PERMISSIONS = [
     'users.create'    => 'เพิ่มบัญชีทีมงาน (EngiNear เท่านั้น)',
     'users.edit'      => 'แก้ไขบัญชีทีมงาน',
     'settings.manage' => 'ตั้งค่าระบบ (EngiNear เท่านั้น)',
+    'locations.manage'=> 'จัดการผังสถานที่พัก (โซน/อาคาร/ห้อง — แอดมินขึ้นไป)',
 ];
 
 const ROLE_NAMES = [1 => 'EngiNear', 2 => 'Admin', 3 => 'Regis', 4 => 'Viewer'];

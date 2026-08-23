@@ -14,7 +14,7 @@
  *  + เลข ปช. 13 หลักตรวจ checksum เข้ม · นำเข้าสำเร็จ = เช็คอิน Active อัตโนมัติ
  *
  * เทมเพลตหัวตาราง 2 แถว (main/sub) ให้เข้าคู่กับไฟล์ส่งออก:
- *   ช่องเดี่ยว (ผสานแนวตั้ง): ลำดับ, เลขบัตร, คำนำหน้า, ชื่อ, นามสกุล, เพศ, วันเกิด, เบอร์โทร, ประเภทที่พัก, วันเข้าพัก
+ *   ช่องเดี่ยว (ผสานแนวตั้ง): ลำดับ, เลขบัตร, คำนำหน้า, ชื่อ, นามสกุล, เพศ, วันเกิด, เบอร์โทร, วันเข้าพัก
  *   กลุ่ม "ที่อยู่ตามทะเบียนบ้าน" และ "ที่อยู่ตามภูมิลำเนา": ที่อยู่, ตำบล, อำเภอ, จังหวัด, รหัสไปรษณีย์
  *   กลุ่ม "สถานะกลุ่มพิเศษ": เช็คบ็อกกลุ่มเปราะบาง (vulnerable_master) + แท็กข้อความฟิลด์พิเศษ (custom_field_master)
  */
@@ -38,26 +38,25 @@ $FIXED_FIELDS = [
     5  => 'gender',
     6  => 'birthdate',
     7  => 'phone',
-    8  => 'location_type',
-    9  => 'check_in',
+    8  => 'check_in',
     // กลุ่ม "ที่อยู่ตามทะเบียนบ้าน" · รหัสไปรษณีย์ใช้ช่วยเลือกแถวใน address_lookup (ตำบลชื่อซ้ำแยกตามเขตไปรษณีย์)
-    10 => 'addr_number',
-    11 => 'addr_tambon',
-    12 => 'addr_amphoe',
-    13 => 'addr_province',
-    14 => 'addr_zipcode',
+    9  => 'addr_number',
+    10 => 'addr_tambon',
+    11 => 'addr_amphoe',
+    12 => 'addr_province',
+    13 => 'addr_zipcode',
     // กลุ่ม "ภูมิลำเนา" — เว้นว่างได้ทั้งชุด = ไม่มีข้อมูลภูมิลำเนา (ระบบจะ fallback ไปที่อยู่ตามทะเบียนบ้านตอนแสดงผล)
-    15 => 'home_addr_number',
-    16 => 'home_addr_tambon',
-    17 => 'home_addr_amphoe',
-    18 => 'home_addr_province',
-    19 => 'home_addr_zipcode',
+    14 => 'home_addr_number',
+    15 => 'home_addr_tambon',
+    16 => 'home_addr_amphoe',
+    17 => 'home_addr_province',
+    18 => 'home_addr_zipcode',
     // กลุ่ม "ข้อมูลสุขภาพ" — ตรงกับคอลัมน์ medical_info/notes ที่ฟอร์มลงทะเบียนบันทึกอยู่แล้ว
     // (เดิมตัวนำเข้าไม่มี 2 ช่องนี้เลย นำเข้าแล้วต้องมาพิมพ์เองทีหลังทุกคน)
-    20 => 'medical_info',
-    21 => 'notes',
+    19 => 'medical_info',
+    20 => 'notes',
 ];
-$FIRST_SPECIAL_IDX = 22;   // ตำแหน่งเริ่มของกลุ่ม "สถานะกลุ่มพิเศษ" (vulnerable + custom)
+$FIRST_SPECIAL_IDX = 21;   // ตำแหน่งเริ่มของกลุ่ม "สถานะกลุ่มพิเศษ" (vulnerable + custom)
 
 // master ของกลุ่มพิเศษ — ลำดับตรงกับ export_excel (ORDER BY id ASC) เพื่อจับคู่ตามตำแหน่งได้
 $V_MASTER = $pdo->query("SELECT id, v_name FROM vulnerable_master ORDER BY id ASC")->fetchAll();
@@ -87,14 +86,6 @@ function imp_mapGender(string $s): ?string {
     if (in_array($s, ['Male', 'ชาย', '1'], true) || strtolower($s) === 'male') return 'Male';
     if (in_array($s, ['Female', 'หญิง', '2'], true) || strtolower($s) === 'female') return 'Female';
     return null;
-}
-
-/** แปลงประเภทที่พัก → enum Inside/Outside · ค่าเริ่มต้น Inside */
-function imp_mapLocation(string $s): string {
-    $s = trim($s);
-    $low = strtolower($s);
-    if (mb_strpos($s, 'นอก') !== false || strpos($low, 'out') !== false) return 'Outside';
-    return 'Inside';
 }
 
 /** เช็คบ็อก "ติ๊กแล้ว" ไหม (✔/✓/yes/1/x/true/มี) */
@@ -433,9 +424,9 @@ function imp_process(PDO $pdo, array $file, array $fixed, int $firstSpecialIdx, 
                 $pdo->beginTransaction();
                 $reopenCheckIn = imp_normalizeCheckIn($d['check_in']);
                 $pdo->prepare(
-                    "INSERT INTO stay_history (citizen_id, check_in, location_type, status, admin_id)
-                     VALUES (?, ?, ?, 'Active', ?)"
-                )->execute([$cid, $reopenCheckIn, imp_mapLocation($d['location_type']), $_SESSION['user_id'] ?? 0]);
+                    "INSERT INTO stay_history (citizen_id, check_in, status, admin_id)
+                     VALUES (?, ?, 'Active', ?)"
+                )->execute([$cid, $reopenCheckIn, $_SESSION['user_id'] ?? 0]);
                 // denorm: สถานะเข้าพักบน citizens
                 $pdo->prepare("UPDATE citizens SET is_active = 1, last_stay_at = ? WHERE id = ?")
                     ->execute([$reopenCheckIn, $cid]);
@@ -494,9 +485,9 @@ function imp_process(PDO $pdo, array $file, array $fixed, int $firstSpecialIdx, 
             // เช็คอินอัตโนมัติ (Active stay)
             $newCheckIn = imp_normalizeCheckIn($d['check_in']);
             $pdo->prepare(
-                "INSERT INTO stay_history (citizen_id, check_in, location_type, status, admin_id)
-                 VALUES (?, ?, ?, 'Active', ?)"
-            )->execute([$cid, $newCheckIn, imp_mapLocation($d['location_type']), $_SESSION['user_id'] ?? 0]);
+                "INSERT INTO stay_history (citizen_id, check_in, status, admin_id)
+                 VALUES (?, ?, 'Active', ?)"
+            )->execute([$cid, $newCheckIn, $_SESSION['user_id'] ?? 0]);
             // denorm: สถานะเข้าพักบน citizens
             $pdo->prepare("UPDATE citizens SET is_active = 1, last_stay_at = ? WHERE id = ?")
                 ->execute([$newCheckIn, $cid]);
@@ -528,11 +519,11 @@ if (($_GET['download'] ?? '') === 'template') {
     $sh->setTitle('Template');
     $ss->getDefaultStyle()->getFont()->setName('Sarabun')->setSize(14);
 
-    // หัวช่องเดี่ยว (คอลัมน์ 1-10) · เรียงตามตำแหน่ง
+    // หัวช่องเดี่ยว (คอลัมน์ 1-9) · เรียงตามตำแหน่ง
     $singleHeaders = [
         t('imp.col_no'), t('imp.col_idcard') . ' *', t('imp.col_prefix'), t('imp.col_firstname') . ' *',
         t('imp.col_lastname'), t('imp.col_gender'), t('imp.col_birthdate'), t('imp.col_phone'),
-        t('imp.col_location'), t('imp.col_checkin'),
+        t('imp.col_checkin'),
     ];
     // กลุ่มที่อยู่ 2 ชุด (ทะเบียนบ้าน + ภูมิลำเนา) — หัวย่อยเหมือนกัน ต่างกันที่ชื่อกลุ่มแถวบน
     $addrSubs   = [t('imp.col_addr_number'), t('imp.col_tambon'), t('imp.col_amphoe'), t('imp.col_province'), t('imp.col_zipcode')];
@@ -598,7 +589,7 @@ if (($_GET['download'] ?? '') === 'template') {
     // แถวตัวอย่าง (แถว 3 — ให้ผู้ใช้ลบก่อนใช้จริง)
     // 🐞 เลขเดิม 1101700230705 **ตก checksum** (หลักตรวจที่ถูกคือ 8 ไม่ใช่ 5) → ใครลอกแถวตัวอย่าง
     // ไปใช้จะถูก imp_validThaiId() ข้ามทิ้งพร้อมข้อความ "เลขบัตรประชาชนไม่ถูกต้อง" ทันที
-    $sample = ['1', '1101700230708', 'นาย', 'สมชาย', 'ใจดี', 'ชาย', '1990-05-01', '0812345678', 'ในศูนย์', date('Y-m-d'),
+    $sample = ['1', '1101700230708', 'นาย', 'สมชาย', 'ใจดี', 'ชาย', '1990-05-01', '0812345678', date('Y-m-d'),
                '99/1', 'ในเมือง', 'เมืองขอนแก่น', 'ขอนแก่น', '40000',
                '', '', '', '', '',                          // ชุดภูมิลำเนา — เว้นว่าง = ไม่มีข้อมูล
                'เบาหวาน · แพ้ยาเพนนิซิลิน', 'ตัวอย่าง — ลบแถวนี้ก่อนนำเข้าจริง'];

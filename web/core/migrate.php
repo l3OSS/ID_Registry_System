@@ -447,6 +447,93 @@ function migP5P6Reencrypt(PDO $pdo, bool $apply = true): string
 }
 
 /**
+ * ผังสถานที่พักแบบลำดับชั้น (locations) — ยกมาจากโปรเจค Sec
+ *   ต้นไม้อ้างตัวเอง (parent_id) ลึกได้ถึง 5 ระดับ (โซน → อาคาร/เรือน → ห้อง/เตียง → …)
+ *   flags: is_shared (อาคารรวม) · assignable (เลือกเป็นจุดพักได้) · display_from (เริ่มแสดง path จากโหนดนี้)
+ * + stay_history.location_id (FK ON DELETE SET NULL) — "จุดพักละเอียด" แทนที่ location_type (Inside/Outside) เดิมทั้งหมด
+ * idempotent · self-contained (เช็ค information_schema เอง — ไม่พึ่ง helper ภายนอก)
+ */
+function migLocations(PDO $pdo, bool $apply = true): string
+{
+    $hasTable = function (string $t) use ($pdo): bool {
+        $s = $pdo->prepare("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?");
+        $s->execute([$t]); return (bool)$s->fetchColumn();
+    };
+    $hasColumn = function (string $t, string $c) use ($pdo): bool {
+        $s = $pdo->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?");
+        $s->execute([$t, $c]); return (bool)$s->fetchColumn();
+    };
+    $hasConstraint = function (string $t, string $n) use ($pdo): bool {
+        $s = $pdo->prepare("SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?");
+        $s->execute([$t, $n]); return (bool)$s->fetchColumn();
+    };
+
+    $lines = [];
+
+    if (!$hasTable('locations')) {
+        if ($apply) {
+            $pdo->exec(
+                "CREATE TABLE locations (
+                    id int UNSIGNED NOT NULL AUTO_INCREMENT,
+                    parent_id int UNSIGNED DEFAULT NULL COMMENT 'NULL = โซนระดับบนสุด',
+                    name varchar(150) NOT NULL,
+                    kind tinyint UNSIGNED NOT NULL DEFAULT 0 COMMENT 'ป้ายชนิด: 0 โซน·1 อาคาร·2 ห้อง·3 พิเศษ',
+                    depth tinyint UNSIGNED NOT NULL DEFAULT 0 COMMENT 'ระดับ 0..4 (เพดาน 5 ชั้น)',
+                    is_shared tinyint(1) NOT NULL DEFAULT 0 COMMENT '1 = อาคาร/เรือนรวม (มีห้องย่อย)',
+                    assignable tinyint(1) NOT NULL DEFAULT 1 COMMENT '1 = เลือกเป็นจุดพักได้',
+                    display_from tinyint(1) NOT NULL DEFAULT 0 COMMENT '1 = เริ่มแสดง path จากโหนดนี้ลงไป',
+                    sort_order int NOT NULL DEFAULT 0,
+                    active tinyint(1) NOT NULL DEFAULT 1,
+                    PRIMARY KEY (id),
+                    KEY idx_parent (parent_id),
+                    CONSTRAINT fk_loc_parent FOREIGN KEY (parent_id) REFERENCES locations (id) ON DELETE CASCADE
+                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+            );
+            $lines[] = "locations: สร้างตารางแล้ว";
+        } else {
+            $lines[] = "locations: (dry-run) จะสร้างตาราง locations";
+        }
+    } else {
+        $lines[] = "locations: มีตารางอยู่แล้ว";
+    }
+
+    if ($hasTable('stay_history')) {
+        if (!$hasColumn('stay_history', 'location_id')) {
+            if ($apply) {
+                $pdo->exec("ALTER TABLE stay_history
+                    ADD COLUMN location_id int UNSIGNED NULL AFTER check_out,
+                    ADD KEY idx_location (location_id)");
+                $lines[] = "stay_history.location_id: เพิ่มคอลัมน์ + index แล้ว";
+            } else {
+                $lines[] = "stay_history.location_id: (dry-run) จะเพิ่มคอลัมน์";
+            }
+        } else {
+            $lines[] = "stay_history.location_id: มีคอลัมน์อยู่แล้ว";
+        }
+
+        if ($apply && $hasTable('locations') && $hasColumn('stay_history', 'location_id')
+            && !$hasConstraint('stay_history', 'fk_stay_location')) {
+            $pdo->exec("ALTER TABLE stay_history
+                ADD CONSTRAINT fk_stay_location FOREIGN KEY (location_id)
+                REFERENCES locations (id) ON DELETE SET NULL");
+            $lines[] = "stay_history.fk_stay_location: เพิ่ม FK แล้ว";
+        }
+
+        // ยกเลิกแนวคิด Inside/Outside — ผัง location_id แทนที่ทั้งหมด · ลบคอลัมน์เดิมทิ้ง (idempotent)
+        if ($hasColumn('stay_history', 'location_type')) {
+            if ($apply) {
+                $pdo->exec("ALTER TABLE stay_history DROP COLUMN location_type");
+                $lines[] = "stay_history.location_type: ลบคอลัมน์แล้ว (เลิกใช้ Inside/Outside)";
+            } else {
+                $lines[] = "stay_history.location_type: (dry-run) จะลบคอลัมน์ (เลิกใช้ Inside/Outside)";
+            }
+        }
+    }
+
+    return "locations:\n  " . implode("\n  ", $lines);
+}
+
+/**
  * สำรอง DB ด้วย mysqldump → backups/reg_<timestamp>.sql
  * @param array $cfg  ['host','port','db','user','pass','root']
  * @return array ['ok'=>bool, 'msg'=>string, 'file'=>?string]
