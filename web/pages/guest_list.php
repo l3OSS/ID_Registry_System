@@ -573,11 +573,6 @@ function changeLimit(limit) {
     urlParams.set('p', 1); // รีเซ็ตหน้ากลับไปหน้า 1 เสมอ
     window.location.href = 'index.php?' + urlParams.toString();
 }
-
-// ฟังก์ชันวันที่ภาษาไทย
-function clearDate() {
-    document.querySelector("#search_check_in_date")._flatpickr.clear();
-}
 </script>
 
 </div>
@@ -587,11 +582,6 @@ function clearDate() {
 
 
 <script>
-// ทำฟังก์ชันเสริมสำหรับล้างตัวกรอง
-document.addEventListener('DOMContentLoaded', function() {
-    // หากต้องการให้ช่องค้นหาทำงาน Auto เมื่อหยุดพิมพ์ สามารถเพิ่ม Logic ตรงนี้ได้
-});
-
 // ช่อง "ไปหน้า" ของแถบแบ่งหน้า (มีได้ทั้งบน/ล่าง → ใช้ event delegation ตัวเดียว)
 (function () {
     function jump(input) {

@@ -23,28 +23,6 @@ date_default_timezone_set('Asia/Bangkok');
 // --- 1. Helper Functions ---
 
 /**
- * จัดการรูปแบบวันที่เช็คอินให้เป็นมาตรฐาน Database
- */
-function processCheckInDate($input_date) {
-    if (empty($input_date)) return date('Y-m-d H:i:s');
-    $input_date = trim($input_date);
-    
-    // กรณี ISO Format
-    if (preg_match('/^(20|19)\d{2}-\d{2}-\d{2}/', $input_date)) {
-        return (strlen($input_date) <= 16) ? $input_date . ":00" : $input_date;
-    }
-    
-    // กรณีปี พ.ศ. หรือรูปแบบอื่นๆ
-    $parts = preg_split('/[\/\-\s:]/', $input_date);
-    if (count($parts) >= 3) {
-        $year = intval($parts[2]);
-        if ($year > 2400) $year -= 543;
-        return sprintf("%04d-%02d-%02d %02d:%02d:00", $year, $parts[1], $parts[0], $parts[3] ?? 0, $parts[4] ?? 0);
-    }
-    return date('Y-m-d H:i:s');
-}
-
-/**
  * ค้นหา ID ที่อยู่จากฐานข้อมูล Master — ตรรกะจริงอยู่ที่ core/functions.php (ใช้ร่วมกับ guest_import/api)
  */
 function lookupAddressId($pdo, $tambon, $amphoe, $province, $zipcode = null) {

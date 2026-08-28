@@ -18,20 +18,6 @@ function checkLogin() {
 }
 
 /**
- * ตรวจสอบระดับสิทธิ์ขั้นต่ำ
- * Role: 1=Engineer, 2=Admin, 3=Mod
- */
-function checkPermission($min_level = 3) {
-    checkLogin();
-    $user_level = $_SESSION['role_level'] ?? 99;
-    
-    // สิทธิ์ยิ่งน้อย เลขยิ่งสูง (1 < 2 < 3)
-    if ($user_level > $min_level) {
-        redirect('index.php?page=403');
-    }
-}
-
-/**
  * เช็คว่าผู้ใช้ปัจจุบัน "จัดการบัญชีเป้าหมาย" ได้ไหม — ลำดับชั้น (เลขน้อย = สิทธิ์สูง)
  *   - EngiNear (1) จัดการได้ทุกคน
  *   - ตัวเอง แก้ของตัวเองได้เสมอ

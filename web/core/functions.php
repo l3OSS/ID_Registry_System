@@ -80,14 +80,6 @@ function detectSiteUrl(): string {
 }
 
 /**
- * URL รากของระบบ — คืน site_url ที่ตั้งไว้ (ตัด / ท้ายออก) ถ้าว่างให้ตรวจจับจาก $_SERVER
- */
-function siteUrl(PDO $pdo): string {
-    $u = trim(appSettings($pdo)['site_url']);
-    return $u !== '' ? rtrim($u, '/') : detectSiteUrl();
-}
-
-/**
  * ประกอบ URL หน้ายินยอม (guest_display) สำหรับ QR ให้แท็บเล็ตในวง LAN สแกน
  *
  * สูตร (ตามที่กำหนด): ตัด scheme://host/ ออกจาก $siteUrl ให้เหลือเฉพาะโฟลเดอร์ (เช่น reg/web)
@@ -198,48 +190,6 @@ function normalizeDateTimeInput(?string $s, ?string $fallback = null): string {
         if ($h < 24 && $i < 60 && $sec < 60) $time = sprintf('%02d:%02d:%02d', $h, $i, $sec);
     }
     return $date . ' ' . $time;
-}
-
-/**
- * คำนวณอายุจากวันเกิด (รองรับทั้ง ค.ศ. และ พ.ศ.)
- */
-function calculateAge($birthdate) {
-    if (empty($birthdate) || $birthdate == '0000-00-00') return 0;
-    
-    try {
-        $date = new DateTime($birthdate);
-        // ดักจับถ้าปีเป็น พ.ศ. ให้ถอยกลับมาเป็น ค.ศ. ก่อนคำนวณ
-        if ($date->format('Y') > 2400) {
-            $date->modify('-543 years');
-        }
-        $today = new DateTime();
-        return $today->diff($date)->y;
-    } catch (Exception $e) {
-        return 0;
-    }
-}
-
-/**
- * ดึงกลุ่มเป้าหมายพิเศษ (Vulnerable groups)
- */
-function getVulnerableText($pdo, $citizen_id, $age = null) {
-    $stmt = $pdo->prepare("
-        SELECT m.v_name FROM citizen_vulnerable_map map 
-        JOIN vulnerable_master m ON map.v_id = m.id WHERE map.citizen_id = ?
-    ");
-    $stmt->execute([$citizen_id]);
-    $items = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-    // ตัวเรียกบางที่ส่ง 0 มาเมื่อ "ไม่มีวันเกิด" (ไม่ใช่ "อายุ 0 ขวบ") — ถ้ารับตรง ๆ จะขึ้น
-    // "เด็ก (0-5 ปี)" ให้คนที่ไม่รู้อายุ เหมือนบั๊กที่แก้ไปแล้วใน guest_check.php
-    // จึงถือว่า 0 = ไม่ทราบ แล้วไม่เดาให้ (เด็กแรกเกิดจริง ๆ ให้ติ๊กกลุ่มเปราะบางเอง ซึ่งดึงมาจาก map ด้านบนอยู่แล้ว)
-    if ($age !== null && $age > 0) {
-        if ($age <= 5) $items[] = "เด็ก (0-5 ปี)";
-        if ($age >= 60) $items[] = "ผู้สูงอายุ";
-    }
-
-    $items = array_unique($items);
-    return !empty($items) ? implode(", ", $items) : "-";
 }
 
 /**
