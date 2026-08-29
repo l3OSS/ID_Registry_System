@@ -33,7 +33,7 @@ return [
     'nav.admin_section' => 'การจัดการระบบ',
     'nav.team'          => 'เจ้าหน้าที่',
     'nav.settings'      => 'ตั้งค่าระบบ',
-    'nav.logs'          => 'ดูประวัติระบบ (Log)',
+    'nav.logs'          => 'ประวัติ Logs',
     'nav.locations'     => 'ผังสถานที่พัก',
     'nav.logout'        => 'ออกจากระบบ',
     'theme.toggle'      => 'สลับโหมดมืด/สว่าง',
