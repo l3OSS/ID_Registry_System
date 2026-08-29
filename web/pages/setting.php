@@ -47,6 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_field'])) {
     if ($field_id && !empty($name)) {
         $stmt = $pdo->prepare("UPDATE custom_field_master SET field_name = ?, is_active = ?, is_searchable = ? WHERE id = ?");
         $stmt->execute([$name, $active, $search, $field_id]);
+        writeLog($pdo, 'UPDATE_CUSTOM_FIELD', "แก้ไขฟิลด์กำหนดเอง: $name (ID: $field_id) [ใช้งาน: $active · ค้นหา: $search]");
         $_SESSION['success_msg'] = t('set.update_success');
     }
 }

@@ -504,7 +504,8 @@ function imp_process(PDO $pdo, array $file, array $fixed, int $firstSpecialIdx, 
         }
     }
 
-    if ($res['ok'] > 0) {
+    // บันทึกทุกครั้งที่มีการอ่านไฟล์จริง (แม้ข้ามทั้งหมด) เพื่อให้มีร่องรอยการนำเข้าเสมอ
+    if ($res['total'] > 0) {
         writeLog($pdo, 'IMPORT_GUESTS', "นำเข้าผู้เข้าพัก {$res['ok']} รายการ · ข้าม " . count($res['skipped']) . " · รวมอ่าน {$res['total']}");
     }
     return $res;

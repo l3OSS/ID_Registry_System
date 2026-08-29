@@ -17,6 +17,7 @@ require_once __DIR__ . '/../core/rbac.php';
 require_once __DIR__ . '/../core/security.php';
 require_once __DIR__ . '/../core/functions.php';
 require_once __DIR__ . '/../core/lang.php';
+require_once __DIR__ . '/../core/log.php';   // export เปิดตรง ไม่ผ่าน index.php — ต้อง require log เอง
 
 // --- 1. Access & Security ---
 if (!userCan('export.excel')) denyAccess(t('export.err_no_access'));
@@ -57,6 +58,16 @@ if ($status === 'active')   { $conditions[] = "c.is_active = 1"; }
 if ($status === 'inactive') { $conditions[] = "c.is_active = 0"; }
 
 $where_sql = $conditions ? "WHERE " . implode(" AND ", $conditions) : "";
+
+// บันทึก log การส่งออก PII — วางไว้ก่อนพ่น output/สตรีมไฟล์ ให้เขียน DB ได้เสมอ
+// ไม่บันทึกค่าคำค้นดิบ (อาจเป็นเลขบัตร/ชื่อ) — เก็บแค่ว่า "มีคำค้นหา" พอสำหรับ audit
+$exp_filters = ['รูปแบบ: ' . strtoupper($format)];
+if ($gender === 'Male')   $exp_filters[] = 'เพศ: ' . t('export.log_gender_male');
+if ($gender === 'Female') $exp_filters[] = 'เพศ: ' . t('export.log_gender_female');
+if ($status === 'active')   $exp_filters[] = 'สถานะ: ' . t('export.log_status_active');
+if ($status === 'inactive') $exp_filters[] = 'สถานะ: ' . t('export.log_status_inactive');
+if ($search !== '')         $exp_filters[] = t('export.log_has_search');
+writeLog($pdo, 'EXPORT_DATA', t('export.log_detail', ['filters' => implode(' · ', $exp_filters)]));
 
 $v_master = $pdo->query("SELECT id, v_name FROM vulnerable_master ORDER BY id ASC")->fetchAll();
 $c_master = $pdo->query("SELECT id, field_name FROM custom_field_master WHERE is_active = 1 ORDER BY id ASC")->fetchAll();

@@ -68,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$user_id]);
             $user = $stmt->fetch();
             
-            writeLog($pdo, 'PROFILE_UPDATE', "User updated profile and avatar (UID: $user_id)");
+            writeLog($pdo, 'PROFILE_UPDATE', "อัปเดตโปรไฟล์/รูปประจำตัว" . (!empty($password) ? " + เปลี่ยนรหัสผ่าน" : "") . " (UID: $user_id)");
 
         } catch (PDOException $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();

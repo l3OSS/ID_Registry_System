@@ -27,7 +27,7 @@ if (isset($_SESSION['user_id'])) {
 session_unset();
 
 // ลบ cookie ของ session ทิ้งด้วย — สำคัญเมื่อผู้ใช้เคยติ๊ก "จำการเข้าสู่ระบบ"
-// (cookie 30 วันจะไม่หายเองตอน logout ถ้าไม่สั่งให้หมดอายุ)
+// (cookie ค้าง 12 ชม. จะไม่หายเองตอน logout ถ้าไม่สั่งให้หมดอายุ)
 if (ini_get('session.use_cookies')) {
     $cp = session_get_cookie_params();
     setcookie(session_name(), '', [

@@ -115,16 +115,21 @@ try {
                                 <small class="text-muted">@<?php echo htmlspecialchars($log['username'] ?? 'auto'); ?></small>
                             </td>
                             <td>
-                                <?php 
+                                <?php
                                     $action = $log['action_type'];
                                     $badge = 'bg-secondary';
-                                    if (preg_match('/INSERT|SAVE|CREATE/i', $action)) $badge = 'bg-success';
-                                    elseif (preg_match('/UPDATE|EDIT/i', $action)) $badge = 'bg-warning text-dark';
-                                    elseif (preg_match('/DELETE|CLEAR|REMOVE/i', $action)) $badge = 'bg-danger';
-                                    elseif (preg_match('/LOGIN|AUTH/i', $action)) $badge = 'bg-primary';
+                                    if (preg_match('/INSERT|SAVE|CREATE|ADD/i', $action)) $badge = 'bg-success';
+                                    elseif (preg_match('/UPDATE|EDIT|RESOLVE|REORDER|PROFILE/i', $action)) $badge = 'bg-warning text-dark';
+                                    elseif (preg_match('/DELETE|CLEAR|REMOVE|RESET/i', $action)) $badge = 'bg-danger';
+                                    elseif (preg_match('/LOGIN|LOGOUT|AUTH/i', $action)) $badge = 'bg-primary';
+                                    elseif (preg_match('/EXPORT|IMPORT|VIEW/i', $action)) $badge = 'bg-info text-dark';
+                                    // แปลรหัสกิจกรรมเป็นภาษาที่อ่านง่าย — ไม่มีคำแปล = แสดงรหัสดิบ (กันตกหล่นเงียบ)
+                                    $action_key   = 'log.act.' . $action;
+                                    $action_label = t($action_key);
+                                    if ($action_label === $action_key) $action_label = $action;
                                 ?>
-                                <span class="badge <?php echo $badge; ?> px-2 py-1" style="font-size: 0.7rem;">
-                                    <?php echo $action; ?>
+                                <span class="badge <?php echo $badge; ?> px-2 py-1" style="font-size: 0.7rem;" title="<?php echo htmlspecialchars($action); ?>">
+                                    <?php echo htmlspecialchars($action_label); ?>
                                 </span>
                             </td>
                             <td>

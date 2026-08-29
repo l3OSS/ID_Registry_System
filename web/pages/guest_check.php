@@ -156,6 +156,8 @@ if ($age !== null) {
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$public_id, $id_card_hash, $id_card_enc, $id_card_last4, $prefix, $firstname, $lastname, $gender, $birthdate, $birth_year_only, $address_id, $post_data['addr_number'], $home_same, $home_address_id, $home_addr_number, $phone_enc, $medical_info, $notes, $file_path_db]);
             $citizen_id = $pdo->lastInsertId();
+            // ทุกการเพิ่มข้อมูลลงฐานข้อมูลต้องมีร่องรอย (แยกจาก CHECK_IN ที่บันทึกการเข้าพัก)
+            writeLog($pdo, 'CREATE_CITIZEN', "เพิ่มบุคคลใหม่: " . trim("$prefix$firstname $lastname") . " (ID: $citizen_id)");
         } else {
             $citizen_id = $old_data['id'];
 
@@ -164,7 +166,8 @@ if ($age !== null) {
                 $sql = "UPDATE citizens SET prefix=?, firstname=?, lastname=?, gender=?, birthdate=?, birth_year_only=?, address_id=?, addr_number=?, home_same_as_reg=?, home_address_id=?, home_addr_number=?, phone_enc=?, medical_info=?, notes=?, photo_path=?, id_card_last4=?, updated_at=NOW()
                         WHERE id=?";
                 $pdo->prepare($sql)->execute([$prefix, $firstname, $lastname, $gender, $birthdate, $birth_year_only, $address_id, $post_data['addr_number'], $home_same, $home_address_id, $home_addr_number, $phone_enc, $medical_info, $notes, $file_path_db, $id_card_last4, $citizen_id]);
-                $log_action = "UPDATE_CITIZEN";
+                // เดิม assign $log_action ทิ้งไว้เฉย ๆ ไม่เคยเขียน log → การแก้ไขบุคคลไม่มีร่องรอยเลย
+                writeLog($pdo, 'UPDATE_CITIZEN', "แก้ไขข้อมูลบุคคล: " . trim("$prefix$firstname $lastname") . " (ID: $citizen_id)");
             }
         }
 
