@@ -24,15 +24,15 @@ $logo_path     = $settings['logo_path'] ?? '';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $app_title; ?></title>
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
+    <link href="./assets/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link href="./assets/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+    <link href="./assets/sweetalert2/sweetalert2.min.css" rel="stylesheet">
 
     <link rel="stylesheet" href="./assets/flatpickr/dist/flatpickr.min.css">
     <link rel="stylesheet" href="./assets/jquery.Thailand.js/dist/jquery.Thailand.min.css">
 
     <script src="./assets/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="./assets/sweetalert2/sweetalert2.min.js"></script>
     <script src="./assets/flatpickr/flatpickr.min.js"></script>
     <script src="./assets/flatpickr/dist/l10n/th.js"></script>
     

@@ -4,8 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <title><?php echo e('cmp.page_title'); ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link href="../assets/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/bootstrap-icons/bootstrap-icons.css">
     <style>
         .compare-card { border-radius: 15px; overflow: hidden; }
         .old-data { background-color: #fff4f4; }

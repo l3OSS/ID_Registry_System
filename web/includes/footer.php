@@ -2,7 +2,7 @@
     <small><?php echo e('footer.copyright', ['year' => date("Y")]); ?></small>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="./assets/bootstrap/bootstrap.bundle.min.js"></script>
 <?php if (function_exists('dbg_render')) dbg_render(); // แผงเวลา (แสดงเฉพาะเมื่อ APP_DEBUG=1) ?>
 </body>
 </html>

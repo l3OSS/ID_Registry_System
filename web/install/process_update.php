@@ -139,8 +139,8 @@ $all_ok = !in_array(false, array_map(fn($s) => $s[0], $steps), true);
 <head>
     <meta charset="UTF-8">
     <title><?php echo e('inst.upd_page_title'); ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link href="../assets/bootstrap/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="../assets/bootstrap-icons/bootstrap-icons.css">
     <style>body{background:#f4f7f6}.rc{max-width:720px;margin:50px auto;border-radius:15px}</style>
 </head>
 <body>

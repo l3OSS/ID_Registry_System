@@ -292,7 +292,7 @@ return [
     'form.confirm_data'  => 'ข้าพเจ้าตรวจสอบข้อมูลทั้งหมดแล้วว่าถูกต้อง',
     'form.pdpa_consent'  => 'ยินยอมให้ระบบประมวลผลข้อมูลส่วนบุคคลตามนโยบาย PDPA (ส่งตรวจทานที่อุปกรณ์พกพาเพื่อปลดล็อค)',
     'form.send_tablet'   => 'ส่งข้อมูลไปที่มือถือ',
-    'form.save_checkin'  => 'บันทึกข้อมูลและเช็คอิน',
+    'form.save_checkin'  => 'บันทึกข้อมูลและลงทะเบียน',
 
     /* ===== ฟอร์มลงทะเบียน — ข้อความในสคริปต์ (ส่งให้ JS ผ่านตัวแปร L) ===== */
     'form.js_checkin_altformat' => 'j M Y (H:i น.)',
@@ -454,8 +454,8 @@ return [
     'log.act.CREATE_CITIZEN'      => 'เพิ่มผู้เข้าพักใหม่',
     'log.act.UPDATE_CITIZEN'      => 'แก้ไขข้อมูลผู้เข้าพัก',
     'log.act.DELETE_GUEST'        => 'ลบผู้เข้าพัก',
-    'log.act.CHECK_IN'            => 'เช็คอิน',
-    'log.act.CHECK_OUT'           => 'เช็คเอาต์',
+    'log.act.CHECK_IN'            => 'ลงทะเบียน',
+    'log.act.CHECK_OUT'           => 'แจ้งออก',
     'log.act.VIEW_HISTORY'        => 'ดูประวัติผู้เข้าพัก',
     'log.act.VIEW_DETAIL'         => 'เปิดดูข้อมูลผู้เข้าพัก',
     'log.act.IMPORT_GUESTS'       => 'นำเข้าข้อมูลผู้เข้าพัก',
